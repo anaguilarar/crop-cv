@@ -1,0 +1,39 @@
+GENERAL:
+  problem: seed_counter
+  
+
+DATASET:
+  image_path: "data/seeds"
+  images_suffix: '.jpg'
+  mean_scaler_values: [0.5,0.5,0.5]
+  std_scaler_values: [0.5,0.5,0.5]
+
+
+MODEL:
+  inputsize: 1024
+  modelname: MASKRCNN
+  version: V2
+  modelweigthurl: "https://dlmodels-bucket.s3.ap-northeast-1.amazonaws.com/maskrcnn_seeds_detection_20240607.zip"
+  weight_path: null
+  prediction_threshold: 0.75
+  segmentation_threshold: 150 
+  model_output_name: "checkpoint"
+  model_output_folder_name: "maskrcnn_seeds_detection_20240607"
+
+PROCESS:
+  perpendicular_tolerance: 0.01
+  padding_percentage: 2
+  color_spacelist: ['hsv', 'cielab']
+  include_srgb: True
+  color_quantiles: [0.25, 0.5, 0.75]
+
+PLOTS:
+  label_factorsize: 60
+  heightframefactor: 0.4
+  textthickness: 15
+  widthframefactor: 0.9
+  plotsoutput: "detection"
+  seeds_figsize: [15,15]
+
+OUTPUT:
+  path: 'detection'
