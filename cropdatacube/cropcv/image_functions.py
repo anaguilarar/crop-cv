@@ -186,8 +186,11 @@ def read_image_as_numpy_array(path, scale_factor=None,
         im_width = size[1]
         im_height = size[0]
         image = image.resize((im_width, im_height))
-    return np.array(image.getdata()).reshape(
-        (im_height, im_width, 3)).astype(np.uint8)
+        
+    image = np.array(image, dtype='uint8')[:,:,:(len(image.getbands())-1)] if path.endswith('.tiff') else np.array(image.getdata(), dtype='uint8').reshape(
+        (im_height, im_width, 3))
+    
+    return image
     
     
 
