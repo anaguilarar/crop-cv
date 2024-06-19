@@ -243,7 +243,8 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
         ## calculate perimeter and area
         countour = self._countours(self._seedmask)[0]
         perimeter = cv2.arcLength(countour,True)
-        area = np.sum(self._seedmask>1)
+        #area = np.sum(self._seedmask>1)
+        area = cv2.contourArea(countour)
         ## length width ration
         lwr = length/width
         ## circularity
@@ -283,8 +284,8 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
         """
         if padding is None: 
             padding = int(np.array(self._img).shape[0]*padding_percentage/100)
-        
-        rgbimageclipped = self._clip_image(self._img, self.bbs[seedid], padding=padding,padding_with_zeros=False)
+        img_c = copy.deepcopy(self._img)
+        rgbimageclipped = self._clip_image(img_c, self.bbs[seedid], padding=padding,padding_with_zeros=False)
         maskclipped = self._clip_image(self.msks[seedid], self.bbs[seedid], padding=padding,padding_with_zeros=False)
         if maskrgb:
             rgbimageclipped[maskclipped<1] = 0

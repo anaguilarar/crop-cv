@@ -93,9 +93,38 @@ def downloadzip(urlpath, foldername = 'models')-> None:
         return zipobject.namelist()
 
 def check_weigth_path(path, suffix = 'h5', weights_path = 'weights'):
-    if not path.endswith(suffix):
-        filesinside = downloadzip(path, foldername = weights_path)
-        path = filter_files_usingsuffix(filesinside, weights_path, suffix=suffix)
+    """
+    Check and retrieve the weight file path, downloading and extracting if necessary.
+
+    Parameters
+    ----------
+    path : str
+        The initial path to the weight file or zip archive.
+    suffix : str, optional
+        The expected file extension of the weight file (default is 'h5').
+    weights_path : str, optional
+        The directory to store the extracted weight files (default is 'weights').
+
+    Returns
+    -------
+    str
+        The path to the weight file with the specified suffix.
     
+    Raises
+    ------
+    FileNotFoundError
+        If the weight file with the specified suffix cannot be found.
+    """
+    if not path.endswith(suffix):
+        
+        if not os.path.exists(weights_path):
+            filesinside = downloadzip(path, foldername = weights_path)
+        else:
+            filesinside = os.listdir(weights_path)
+        
+        path = filter_files_usingsuffix(filesinside, weights_path, suffix=suffix)
+        if not path:
+            raise FileNotFoundError(f"No file with suffix '{suffix}' found in '{weights_path}'.")
+        
     return path
 
