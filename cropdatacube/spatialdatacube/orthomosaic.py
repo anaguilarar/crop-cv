@@ -267,13 +267,20 @@ class OrthomosaicProcessor:
     Attributes
     ----------
     raster_data : xarray.Dataset
-        An xarray dataset representing the UAV image data.
+        An xarray dataset representing the orthomosaic image data.
     variable_names: list of str
         A list of strings representing the spectral bands in the UAV image.
     available_vi: dict
         A dictionary of vegetation indices that can be calculated from the spectral imagery.
     """
-
+    @property
+    def raster_data(self):
+        if self._raster_data is None:
+            self._raster_data = self.tif_toxarray(self._is_multibands, bounds=self.bounds_asjson)
+        
+        return self._raster_data
+            
+    
     def __init__(self, inputpath: str, bands: Optional[List[str]] = None,
                  multiband_image: bool = False, bounds: Optional[dict] = None):
         
@@ -291,17 +298,15 @@ class OrthomosaicProcessor:
         bounds : dict, optional
             GeoDataFrame, GeoSeries, or a list of GeoJSON-like dict to clip the image.
         """
-        
+        self._raster_data = None
         self._bands = ['red', 'green', 'blue'] if bands is None else bands
         self._clusters = np.nan
         self._tiles_pols = None
         self._files_path = self._determine_files_path(inputpath, multiband_image)
         self.bounds_asjson = check_boundarytype(bounds)
-        
-        if len(self._files_path)>0:
-            self.raster_data = self.tif_toxarray(multiband_image, bounds=self.bounds_asjson)
-        else:
-            raise FileNotFoundError('No file path was found at the specified input path.')
+        assert len(self._files_path)>0, 'No file path was found at the specified input path.'
+        self._is_multibands = multiband_image
+
             
 
     def _determine_files_path(self, inputpath: str, multiband_image: bool) -> List[str]:

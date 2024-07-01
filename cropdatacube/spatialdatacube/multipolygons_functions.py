@@ -18,15 +18,16 @@ from .xyz_functions import get_baseline_altitude
 from .gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
 from .xyz_functions import calculate_leaf_angle
 from .orthomosaic import calculate_vi_fromxarray
-
+from .datacube_processors import DataCubeMetrics
 from .orthomosaic import OrthomosaicProcessor
 from .general import MSVEGETATION_INDEX
 
-from typing import List, Optional, Union, Any
+from typing import List, Optional, Union, Any, Dict
 
 import tqdm
 import random
 import itertools
+
 
 ##
 RGB_BANDS = ["red","green","blue"] ### this order is because the rgb uav data is stacked
@@ -385,7 +386,7 @@ class IndividualUAVData(object):
         """
     
         if self.uav_sources['rgb']:
-            data = clip_xarraydata(self.uav_sources['rgb'].drone_data, 
+            data = clip_xarraydata(self.uav_sources['rgb'].raster_data, 
                 self.spatial_boundaries.loc[:,'geometry'])
         else:
             data = None
@@ -403,7 +404,7 @@ class IndividualUAVData(object):
         """
     
         if self.uav_sources['ms']:
-            data = clip_xarraydata(self.uav_sources['ms'].drone_data, 
+            data = clip_xarraydata(self.uav_sources['ms'].raster_data, 
                 self.spatial_boundaries.loc[:,'geometry'])
         else:
             data = None
@@ -457,8 +458,8 @@ class IndividualUAVData(object):
         """
 
         pointcloud = self.uav_sources['pointcloud'].twod_image if self.uav_sources['pointcloud'] is not None else None
-        ms = self.uav_sources['ms'].drone_data if self.uav_sources['ms'] is not None else None
-        rgb = self.uav_sources['rgb'].drone_data if self.uav_sources['rgb'] is not None else None
+        ms = self.uav_sources['ms'].raster_data if self.uav_sources['ms'] is not None else None
+        rgb = self.uav_sources['rgb'].raster_data if self.uav_sources['rgb'] is not None else None
 
         img_stacked =  stack_multisource_data(self.spatial_boundaries,
                                 ms_data = ms, 
@@ -579,7 +580,7 @@ def extract_random_samples_from_drone(imagepath, geometries, bands = None, multi
             
             drdata = OrthomosaicProcessor(imagepath,    multiband_image= multiband, bounds= geometries.iloc[j:j+1].buffer(buffer, join_style=2),bands = bands)
 
-            xrdata = drdata.drone_data.copy()
+            xrdata = drdata.raster_data.copy()
 
             for i, feature in enumerate(bands):
                 data = xrdata[feature].values
@@ -677,20 +678,30 @@ def extract_uav_datausing_geometry(rgbpath: Optional[str] = None,
 
 
 
-class MultiMLTImages(CustomXarray):
+class MultiMLTImages(CustomXarray, DataCubeMetrics):
     """
     A class for extracting, processing, and stacking multi-temporal remote sensing data.
 
-    Attributes:
-        rgb_paths (list): Paths to RGB orthomosaic imagery.
-        ms_paths (list): Paths to multispectral orthomosaic imagery.
-        pointcloud_paths (list): Paths to point cloud data.
-        processing_buffer (float): A buffer value for image processing.
-        rgb_channels (list): Names of RGB channels.
-        ms_channels (list): Names of multispectral channels.
-        path (str): Directory path for customdict xarray files.
-        geometries (GeoDataFrame): Geopandas DataFrame of spatial geometries.
+    Attributes
+    ----------
+    rgb_paths : list
+        Paths to RGB orthomosaic imagery.
+    ms_paths : list
+        Paths to multispectral orthomosaic imagery.
+    pointcloud_paths : list
+        Paths to point cloud data.
+    processing_buffer : float
+        A buffer value for image processing.
+    rgb_channels : list
+        Names of RGB channels.
+    ms_channels : list
+        Names of multispectral channels.
+    path : str
+        Directory path for customdict xarray files.
+    geometries : GeoDataFrame
+        Geopandas DataFrame of spatial geometries.
     """
+    
     
     def __init__(self, 
                 rgb_paths: Optional[List[str]] = None, 
@@ -706,29 +717,31 @@ class MultiMLTImages(CustomXarray):
         """
         Initializes the MultiMLTImages class for processing multi-temporal remote sensing data.
 
-        This class is designed to handle and process multi-temporal remote sensing data 
-        from various sources such as RGB, multispectral (MS), and point cloud data. It 
-        supports operations like data extraction, scaling, and calculation of vegetation indices.
+        Parameters
+        ----------
+        rgb_paths : list, optional
+            List of paths to RGB orthomosaic imagery directories.
+        ms_paths : list, optional
+            List of paths to multispectral orthomosaic imagery directories.
+        pointcloud_paths : list, optional
+            List of paths to point cloud data directories (XYZ format).
+        spatial_file : str, optional
+            Path to a vector file (e.g., GeoJSON, Shapefile) defining spatial geometries for extraction.
+        rgb_channels : list, optional
+            Names of the channels in the RGB data (e.g., ['R', 'G', 'B']).
+        ms_channels : list, optional
+            Names of the channels in the multispectral data.
+        path : str, optional
+            Path to a directory where customdict xarray files are stored as pickle files.
+        processing_buffer : float, optional
+            Buffer value (in meters) used during image processing to handle edge effects.
+        **kwargs : dict
+            Additional keyword arguments to be passed to the parent class (CustomXarray).
 
-        Args:
-            rgb_paths (list, optional): List of paths to RGB orthomosaic imagery directories.
-            ms_paths (list, optional): List of paths to multispectral orthomosaic imagery directories.
-            pointcloud_paths (list, optional): List of paths to point cloud data directories (XYZ format).
-            spatial_file (str, optional): Path to a vector file (e.g., GeoJSON, Shapefile) defining spatial geometries for extraction.
-            rgb_channels (list, optional): Names of the channels in the RGB data (e.g., ['R', 'G', 'B']).
-            ms_channels (list, optional): Names of the channels in the multispectral data.
-            path (str, optional): Path to a directory where customdict xarray files are stored as pickle files.
-            processing_buffer (float, optional): Buffer value (in meters) used during image processing to handle edge effects.
-            **kwargs: Additional keyword arguments to be passed to the parent class (CustomXarray).
-
-        Raises:
-            FileNotFoundError: If the provided `spatial_file` does not exist.
-
-        Examples:
-            #### Initializing with RGB and MS data paths
-            multi_mlt_images = MultiMLTImages(rgb_paths=["/path/to/rgb"], 
-                                              ms_paths=["/path/to/ms"],
-                                              spatial_file="/path/to/spatial/file.sh")
+        Raises
+        ------
+        FileNotFoundError
+            If the provided `spatial_file` does not exist.
         """
         
         self.rgb_paths = rgb_paths
@@ -738,10 +751,11 @@ class MultiMLTImages(CustomXarray):
         self.rgb_channels = rgb_channels
         self.ms_channels = ms_channels
         self.path = path
-        super().__init__(**kwargs)
+        CustomXarray.__init__(self,**kwargs)
         if spatial_file is not None and not os.path.exists(spatial_file):
             raise FileNotFoundError(f"Spatial file not found: {spatial_file}")
 
+        DataCubeMetrics.__init__(self, xrdata=None, array_order=None)
         self.geometries = gpd.read_file(spatial_file) if spatial_file is not None else None
             
     
@@ -750,8 +764,10 @@ class MultiMLTImages(CustomXarray):
         """
         Retrieves a list of filenames ending with 'pickle' in the specified path.
 
-        Returns:
-            List[str]: List of filenames.
+        Returns
+        -------
+        list of str or None
+            List of filenames.
         """
         
         if self.path is not None:
@@ -761,29 +777,38 @@ class MultiMLTImages(CustomXarray):
             files = None
         return files
     
-    def _export_individual_data(self, geometry_id,path,fn,**kwargs):
+    def _export_individual_data(self,geometry_id: int, path: str, fn: str, **kwargs) -> None:
         """
         Exports data for an individual geometry to a pickle file.
 
-        Args:
-            geometry_id (int): Index of the geometry.
-            path (str): Path to export directory.
-            fn (str): Filename for export.
+        Parameters
+        ----------
+        geometry_id : int
+            Index of the geometry.
+        path : str
+            Path to export directory.
+        fn : str
+            Filename for export.
         """
         
         self.individual_data(geometry_id, **kwargs)
         self.export_as_dict(path = path,fn=fn)
         
-    def extract_samples(self, channels: List[str] = None, n_samples: int = 100, **kwargs):
+    def extract_samples(self, channels: Optional[List[str]] = None, n_samples: int = 100, **kwargs) -> Dict[str, List[float]]:
         """
         Extracts sample data from geopandas polygons.
 
-        Args:
-            channels (List[str], optional): List of channels to extract.
-            n_samples (int): Number of samples to extract.
+        Parameters
+        ----------
+        channels : list of str, optional
+            List of channels to extract.
+        n_samples : int
+            Number of samples to extract.
 
-        Returns:
-            Dict[str, List[float]]: Extracted data organized by channel.
+        Returns
+        -------
+        dict of str to list of float
+            Extracted data organized by channel.
         """
         
         import random
@@ -857,21 +882,32 @@ class MultiMLTImages(CustomXarray):
                     except Exception as exc:
                         print(f"A task generated an exception: {exc}")
                         raise
-        
-    def _time_pointsextraction(self,tp:int):
+    
+    def _time_pointsextraction(self, tp: int) -> xarray.DataArray:
         """
         Extracts data for a specific time point.
 
-        Args:
-            tp (int): Time point index.
+        Parameters
+        ----------
+        tp : int
+            Time point index.
 
-        Returns:
-            DataArray: Data extracted at the specified time point.
+        Returns
+        -------
+        xarray.DataArray
+            Data extracted at the specified time point.
         """
         
         rgbpath = self.rgb_paths[tp] if self.rgb_paths is not None else None
         mspath = self.ms_paths[tp] if self.ms_paths is not None else None
         pcpath = self.pointcloud_paths[tp] if self.pointcloud_paths is not None else None
+        
+        return self._clip_cubedata_image(rgbpath, mspath, pcpath)
+    
+    def _update_params(self):
+        pass
+    
+    def _clip_cubedata_image(self, rgbpath, mspath, pcpath):
         
         return extract_uav_datausing_geometry(rgbpath, 
                         mspath, 
@@ -882,40 +918,48 @@ class MultiMLTImages(CustomXarray):
                         buffer= self._buffer,
                         processing_buffer = self.processing_buffer,
                         interpolate_pc = self._interpolate_pc, rgb_asreference = self._rgb_asreference)
-        
 
-    def individual_data(self,  geometry_id, interpolate_pc = True,
-                        rgb_asreference = True, 
-                        datesnames = None,
-                        buffer = None,
-                        paralleltimepoints = False, njobs = None):
+    
+    def extract_datacube_asxaray(
+        self,
+        geometry: gpd.GeoDataFrame = None,
+        interpolate_pc: bool = True,
+        rgb_asreference: bool = True, 
+        buffer: Optional[float] = None,
+        paralleltimepoints: bool = False,
+        datesnames: Optional[List[str]] = None,
+        njobs: Optional[int] = None
+        ) -> xarray.DataArray:
         """
-        Extracts data for an individual geometry.
+        Extracts a datacube for a given geometry.
 
-        Args:
-            geometry_id (int): Index of the geometry.
-            interpolate_pc (bool, optional): Interpolate point cloud data with knn. Defaults to True.
-            rgb_asreference (bool, optional): Use RGB as a reference for co-registration. Defaults to True.
-            datesnames (list, optional): Names for dates axis in the data cube. Defaults to None.
-            buffer (float, optional): Buffer value for geometry extraction. Defaults to None.
-            paralleltimepoints (bool, optional): Whether to process time points in parallel. Defaults to False.
-            njobs (int, optional): Number of parallel jobs. Defaults to None.
+        Parameters
+        ----------
+        geometry : gpd.GeoDataFrame, optional
+            Geopandas DataFrame for clipping the orthomosaic. Defaults to None.
+        interpolate_pc : bool, optional
+            Interpolate point cloud data with knn. Defaults to True.
+        rgb_asreference : bool, optional
+            Use RGB as a reference for co-registration. Defaults to True.
+        buffer : float, optional
+            Buffer value for geometry extraction. Defaults to None.
+        paralleltimepoints : bool, optional
+            Whether to process time points in parallel. Defaults to False.
+        datesnames : list of str, optional
+            Names for dates axis in the data cube. Defaults to None.
+        njobs : int, optional
+            Number of parallel jobs. Defaults to None.
 
-        Returns:
-            DataArray: Extracted data for the individual geometry.
+        Returns
+        -------
+        xarray.DataArray
+            Extracted datacube for the geometry.
         """
         
-        self._scalarflag = False
-        assert self.geometries.shape[0] > geometry_id
-        roi = self.geometries.iloc[geometry_id:geometry_id+1]
-
-        datalist = []
-        self._tmproi,self._buffer,self._rgb_asreference,self._interpolate_pc =  roi, buffer,rgb_asreference,interpolate_pc
+        self._tmproi,self._buffer,self._rgb_asreference,self._interpolate_pc =  geometry, buffer,rgb_asreference,interpolate_pc
         
         if paralleltimepoints:
-            if njobs is None:
-                njobs = multiprocessing.cpu_count()
-            
+            njobs = multiprocessing.cpu_count() if njobs is None else njobs
             results = []
             with cf.ProcessPoolExecutor(max_workers=njobs) as executor:
                 for i in range(len(self.rgb_paths)):
@@ -925,9 +969,9 @@ class MultiMLTImages(CustomXarray):
             datalist = [future.result() for future in results]
                     
         else:
-            for i in range(len(self.rgb_paths)):
-                datalist.append(self._time_pointsextraction(i))
-        
+            datalist = [self._time_pointsextraction(i) for i in range(len(self.rgb_paths))]
+                
+                
         if len(datalist)>1:
             if datesnames is None:
                 capturedates = [find_date_instring(self.rgb_paths[i]) for i in range(len(self.rgb_paths))]
@@ -938,19 +982,49 @@ class MultiMLTImages(CustomXarray):
                 resizeinter_method = 'nearest')
         else:
             self.xrdata = datalist[0]
+        
+        return self.xrdata
+
+    def individual_data(self,  geometry_id: int = None, **kwargs) -> xarray.DataArray:
+        """
+        Extracts data for an individual geometry.
+
+        Parameters
+        ----------
+        geometry_id : int
+            Index of the geometry.
+        **kwargs : dict
+            Additional keyword arguments.
+
+        Returns
+        -------
+        xarray.DataArray
+            Extracted data for the individual geometry.
+        """
+        
+        self._scalarflag = False
+        assert self.geometries.shape[0] > geometry_id
+        roi = self.geometries.iloc[geometry_id:geometry_id+1]
+
+        self.extract_datacube_asxaray(roi, kwargs)
     
         return self.xrdata
     
-    def read_individual_data(self, file: str = None, path: str = None, dataformat: str = 'CHW'):
+    def read_individual_data(self, file: str = None, path: str = None, dataformat: str = 'CHW') -> xarray.DataArray:
         """
         Reads individual data from a pickle file.
 
-        Args:
-            file (str, optional): Filename to read.
-            path (str, optional): Directory path containing the file.
-            dataformat (str, optional): Format of the data
+        Parameters
+        ----------
+        file : str, optional
+            Filename to read.
+        path : str, optional
+            Directory path containing the file.
+        dataformat : str, optional
+            Format of the data ('CHW' for channels, height, width).
 
-        Returns:
+        Returns
+        -------
         xarray.DataArray
             Data read from the file as xarray.
         """
@@ -969,7 +1043,7 @@ class MultiMLTImages(CustomXarray):
         #return self.to_array(self.customdict,onlythesechannels)
     
     #@staticmethod
-    def scale_uavdata(self, scaler, scaler_type = 'standarization', applyagain =False):
+    def _scale_xrdata(self, scaler, scaler_type = 'standarization', applyagain =False):
         from .xr_functions import xr_data_transformation
         """
         Scales multitemporal data using the specified scaler.
@@ -1000,61 +1074,8 @@ class MultiMLTImages(CustomXarray):
         
         return self.xrdata 
             
-                    
-    def calculate_vi(self, vilist, viequations: List[str] = None, overwritevi: bool = True, verbose: bool = False, updatedatacube = True):
-        """
-        Calculates specified vegetation indices on the data.
-
-        Args:
-            vilist (List[str], optional): List of vegetation indices to calculate.
-            viequations (Dict[str, str], optional): Custom equations
-            overwritevi (bool, optional): Overwrite existing index in the datacube. Defaults to True.
-            verbose (bool, optional): verbose. Defaults to False.
-            updatedatacube (bool, optional): update class datacube. Defaults to True.
-        
-        Returns:
-        xarray.DataArray
-            Data read from the file as xarray.
-            
-            
-        """
-        
-        if vilist is None:
-            vilist = ['ndvi']
-        if viequations is None:
-
-            viequations = MSVEGETATION_INDEX
-        xrdatac = self.xrdata.copy()
-        for vi in vilist:
-            if verbose:
-                print('Computing {}'.format(vi))
-            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,
-                                              expression = viequations[vi], 
-                                              overwrite=overwritevi)
-        if updatedatacube:
-            self.xrdata = xrdatac
-            
-        return xrdatac
     
-    def summarize_as_dataframe(self, channels = None,func = np.nanmedian):
-        """
-        Summarizes the datacube as a DataFrame.
-
-        Args:
-            channels (list, optional): List of channels to summarize. Defaults to None.
-            func (function, optional): Aggregation function. Defaults to np.nanmedian.
-
-        Returns:
-            dict: Summary data organized by channel.
-        """
-        
-        dataasdict = None
-        channels = channels if channels is not None else list(self.xrdata.keys())
-        if len(list(self.xrdata.dims.keys())) == 2:
-            dataasdict = {channel: [func(self.xrdata[channel].values)] 
-             for channel in channels}
-        
-        return dataasdict
+    
     
 
         

@@ -23,6 +23,7 @@ from .gis_functions import (
     clip_xarraydata)
 
 from .orthomosaic import calculate_vi_fromxarray
+from .general import MSVEGETATION_INDEX
 
 from ..cropcv.image_functions import resize_2dimg, fill_na_values
 
@@ -53,7 +54,7 @@ class DataCubeMetrics(metaclass=ABCMeta):
     """
     @property
     def _available_vi(self):
-        from .general import MSVEGETATION_INDEX
+        #from .general import MSVEGETATION_INDEX
         return list(MSVEGETATION_INDEX.keys())
     @property
     def _available_color_spaces(self):
@@ -247,7 +248,7 @@ class DataCubeMetrics(metaclass=ABCMeta):
         if vi_list is None:
             vi_list = ['ndvi']
         if vi_equations is None:
-            from drone_data.utils.general import MSVEGETATION_INDEX
+            
             vi_equations = MSVEGETATION_INDEX
     
         xrdatac = self.xrdata.copy()
@@ -624,7 +625,7 @@ def apply_image_augmentation(image: np.ndarray, transformation: str, channel_nam
         The augmented image data.
     """
     try:
-        from ..image_transform.imagery_transformation import MultiTimeTransform
+        from ..cropcv.imagery_transformation import MultiTimeTransform
     except:
         raise ValueError(' is not a module called imagerytransformation')
         #print("There is not a module called Crop_CV, please donwloaded first to apply image augmentation")

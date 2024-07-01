@@ -1,6 +1,4 @@
 import os
-from .reporters import ReporterBase
-from .engine import DLTrainerModel
 
 import logging
 import numpy as np
@@ -76,44 +74,6 @@ def create_run_folder_from_config(config, run_suffix = "_run_0"):
     return newpath
 
 
-def setup_reporter(config, counter = 'epoch'):
-        ## set reporter
-    reporter = ReporterBase()
-    if config['start_from_scratch']:
-        reporter.set_reporter(config['reporter_keys'])
-        init_epoch = 0
-        bestlossvalue = float('inf')
-    else:
-        pathtoreport = os.path.join(config['reporter_path'],config['file_name'])
-        reporter.load_reporter(pathtoreport)
-        init_epoch = reporter.report[counter][-1] + 1
-        evallosvalues = reporter.report['eval_loss']
-        bestlossvalue = np.min(evallosvalues) + np.std(evallosvalues)
-        
-        logging.info("The reporter was uploaded best loss validation value {:.4f}".format(bestlossvalue))
-
-    return reporter, init_epoch, bestlossvalue
-
-
-
-def set_configuration(config_path, phase= 'train', cv = -1):
-    if not os.path.exists(config_path):
-        raise ValueError(f"{config_path} path does not exists")
-    
-    with open(config_path, 'r') as fn:
-        opt =  yaml.load(fn, Loader=yaml.SafeLoader)
-
-    if phase == 'train':
-        opt['DATASET']['phase'] = 'train'
-        opt['DATASET']['path'] = opt['DATASET']['train_file_path']
-        opt['DATASET']['only_these_tps'] =opt['DATASET'].get('validation_time_points', None)
-    else:
-        opt['DATASET']['phase'] = 'validation'
-        opt['DATASET']['path'] = opt['DATASET']['validation_file_path']
-        opt['DATASET']['only_these_tps'] = opt['DATASET'].get('validation_time_points', None)
-        
-    opt['DATASPLIT']['cv'] = cv
-    return opt
 
 
 
@@ -165,82 +125,3 @@ def setup_model(config):
 
     return model
 
-
-
-def run_one_model(config: dict, training_data: torch.utils.data.DataLoader, validation_data: torch.utils.data.DataLoader) -> None:
-    """
-    Run a single model training process.
-
-    Parameters
-    ----------
-    config : dict
-        Configuration dictionary containing model, training, and reporting settings.
-    training_data : torch.utils.data.DataLoader
-        DataLoader for the training data.
-    validation_data : torch.utils.data.DataLoader
-        DataLoader for the validation data.
-
-    Returns
-    -------
-    None
-    """
-    import torch.nn as nn
-    
-    cv = config['DATASPLIT'].get('cv', None)
-    kfold = config['DATASPLIT'].get('kfolds', None)
-    cvlabel = '_cv_{}_of_{}'.format(cv,kfold) #if cv else ''
-        
-    # model's configuration
-    config['MODEL']['n_channels'] = len(config['DATASET']['feature_names'].split('-'))
-    model = setup_model(config['MODEL'])
-    optimizer = torch.optim.SGD(model.parameters(), lr=10**-2, momentum=0.9)
-    
-    # Loss function configuration
-    lossfunction = config['MODEL'].get('loss_function',None)
-    if lossfunction == 'cross_entropy':
-        print('cross entropy')
-        lossfun = torch.nn.functional.cross_entropy
-    else:
-        lossfun = nn.BCEWithLogitsLoss()
-    
-    # Reporter's configuration
-    config['REPORTER']['file_name'] = model.model_name+'_reporter.json'
-    config['REPORTER']['reporter_path'] = config['MODEL']['weight_path']
-    reporter, init_epoch, bestlossvalue = setup_reporter(config['REPORTER'])
-    config['TRAINING']['best_loss_value'] = bestlossvalue
-    reporter.file_name = model.model_name + '{}_reporter.json'.format(cvlabel)
-    dltrainer = DLTrainerModel(model = model, 
-                            train_data_loader=training_data, 
-                            validation_data_loader= validation_data, 
-                            optimizer=optimizer, 
-                            model_weight_path = config['MODEL']['weight_path'],
-                            reporter=reporter, 
-                            loss_fcn=lossfun)
-    
-    if config['TRAINING']['start_from_scratch']:
-        mpath = os.path.join(dltrainer._weight_path,model.model_name + '_model_params')
-        opath = os.path.join(dltrainer._weight_path,model.model_name + '_optimizer_params')
-        scpath = os.path.join(dltrainer._weight_path,model.model_name + '_scaler_params')
-        dltrainer.load_weights(model_path=mpath,optimizer_path=opath, scaler_path=scpath)
-        logging.info(f"The {dltrainer.model.model_name} model was uploaded from {mpath}")
-    else:
-        logging.info(f"The {dltrainer.model.model_name} model is gonna start from {init_epoch}")
-
-    with open(os.path.join(config['MODEL']['weight_path'], model.model_name + '_configuration.yaml'), 'w') as outfile:
-        yaml.dump(config, outfile, default_flow_style=False)
-        
-    logging.info(f"""Training: {dltrainer.model.model_name}
-                 Model will be saved in: {config['MODEL']['weight_path']}
-                 n Channels: {config['MODEL']['n_channels']}
-                 reporter: {reporter.file_name} """)
-    
-    # trainining start
-    dltrainer.fit(
-        start_from= int(init_epoch),
-        max_epochs= int(config['TRAINING']['max_epochs'] + init_epoch), 
-        save_best=config['TRAINING']['save_best'],
-        best_value= config['TRAINING']['best_loss_value'],
-        checkpoint_metric = config['TRAINING']['checkpoint_metric'],
-        suffix_model='{}.pickle'.format(cvlabel),
-        lag_best=config['TRAINING']['stopat'],
-        start_saving_from = config['TRAINING']['startsavingfrom'])

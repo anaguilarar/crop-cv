@@ -10,7 +10,6 @@ import pandas as pd
 
 from .base_processors import EvaluatorBase
 
-import tqdm
 
 import numpy as np
 import os

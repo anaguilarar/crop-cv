@@ -626,14 +626,19 @@ def check_border(coord, sz):
         coord = sz - 1
     return coord
 
-def from_polygon_2bbox(pol):
-    """get min and max coordinates values from a Polygon geometry
+def from_polygon_2bbox(pol: Polygon) -> List[float]:
+    """
+    Get the minimum and maximum coordinate values from a Polygon geometry.
 
-    Args:
-        pol (Polygon): geometry
+    Parameters
+    ----------
+    pol : Polygon
+        The polygon geometry.
 
-    Returns:
-        list: (xmin, ymin, xmax, ymax)
+    Returns
+    -------
+    list of float
+        A list containing the bounding box coordinates in the format [xmin, ymin, xmax, ymax].
     """
     points = list(pol.exterior.coords)
     x_coordinates, y_coordinates = zip(*points)
@@ -739,16 +744,21 @@ def from_bbxarray_2polygon(bb, xrdata):
     return from_xyxy_2polygon(xcoords[int(x1)], ycoords[int(y1)],
                               xcoords[int(x2)], ycoords[int(y2)])
 
-def AoU_from_polygons(p1: Polygon, p2: Polygon):
+def AoU_from_polygons(p1: Polygon, p2: Polygon) -> float:
     """
-    Calculate the Intersection over Minimum Area (AoU) between two polygons.
+    Calculates the Area of Union (AoU) for two polygons.
 
-    Args:
-        p1 (Polygon): First polygon.
-        p2 (Polygon): Second polygon.
+    Parameters
+    ----------
+    p1 : Polygon
+        The first polygon.
+    p2 : Polygon
+        The second polygon.
 
-    Returns:
-        float: Intersection over Minimum Area (AoU) between the two polygons.
+    Returns
+    -------
+    float
+        The Area of Union (AoU) of the two polygons.
     """
     intersecarea = p1.intersection(p2).area
     if intersecarea == 0:
@@ -767,17 +777,24 @@ def AoU_from_polygons(p1: Polygon, p2: Polygon):
     return aoi
 
 
-def finding_intersected_pols(polygons: List, polref: Polygon, thresholdintersection: float = 0.25):
+def finding_intersected_pols(polygons: List[Polygon], polref: Polygon, thresholdintersection: float = 0.25) -> List[Tuple[int, float]]:
     """
     Find polygons intersecting with a reference polygon based on the Intersection over Minimum Area (AoU) threshold.
 
-    Args:
-        polygons (list): List of polygons to compare with the reference polygon.
-        polref (Polygon): Reference polygon.
-        thresholdintersection (float, optional): Intersection over Minimum Area (AoU) threshold. Defaults to 0.25.
+    Parameters
+    ----------
+    polygons : list of Polygon
+        List of polygons to compare with the reference polygon.
+    polref : Polygon
+        Reference polygon.
+    thresholdintersection : float, optional
+        Intersection over Minimum Area (AoU) threshold, by default 0.25.
 
-    Returns:
-        list: List of intersecting polygons with their respective AoU values above the threshold.
+    Returns
+    -------
+    list of tuple
+        List of tuples, where each tuple contains the index of the intersecting polygon and its respective AoU value
+        above the threshold.
     """
     
     pp1 = polref
@@ -831,13 +848,16 @@ def get_minmax_pol_coords(polygon: Polygon) -> list:
     """
     Get the minimum and maximum coordinates of a Shapely Polygon.
 
-    Args:
-        polygon (Polygon): Shapely Polygon object.
+    Parameters
+    ----------
+    polygon : Polygon
+        Shapely Polygon object.
 
-    Returns:
-        list: List containing minimum and maximum x-coordinates and y-coordinates in the format
-              [[xmin, xmax], [ymin, ymax]].
-
+    Returns
+    -------
+    list
+        List containing minimum and maximum x-coordinates and y-coordinates in the format
+        [[xmin, xmax], [ymin, ymax]].
     """
     
     coords = polygon.exterior.xy

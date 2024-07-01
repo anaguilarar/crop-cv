@@ -284,11 +284,17 @@ class DLTrainerModel(DLBaseEngine):
             #pred = torch.max(pred, dim=1)[1]
             #pred = torch.unsqueeze(pred.type(torch.float32), dim = 1)
             #pred.requires_grad = True
-            y = y.type(torch.int64)
+            y = y.type(torch.long)
             y = torch.squeeze(y)
-        #if self._multiclass:
-        #    losses.requires_grad = True
+            #pred.requires_grad = True
+            #y.requires_grad = True
+            #losses.requires_grad=True
+        
         losses =  self.loss_fcn(pred,y)
+        
+        #if self._multiclass:
+        #    losses =losses.detach()
+
         
         return losses
     
@@ -420,14 +426,16 @@ class DLTrainerModel(DLBaseEngine):
             y = y.to(self.device)
             x = x.to(self.device)
             
-        self.optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
-            if self.loss_fcn is not None:
+        
+        
+        if self.loss_fcn is not None:
+            with torch.cuda.amp.autocast():
                 output = self.model(x)
-                losses = self.compute_loss(output, y)
-            else:
+            losses = self.compute_loss(output, y)
+        else:
+            with torch.cuda.amp.autocast():
                 loss_dict = self.model(x, y)
-                losses = sum(loss for loss in loss_dict.values())
+            losses = sum(loss for loss in loss_dict.values())
             
         #if self._multiclass:
         #    losses.backward()
@@ -436,6 +444,7 @@ class DLTrainerModel(DLBaseEngine):
         self.grad_scaler.scale(losses).backward()    
         self.grad_scaler.step(self.optimizer)
         self.grad_scaler.update()
+        self.optimizer.zero_grad()
             
         #write losses losses
         self._save_loss(losses)
@@ -706,4 +715,5 @@ class MLTrainerModel():
         
         losses =  {'f1score':model_f1score,'accuracy':model_accuracy}
         return losses
-                    
+
+

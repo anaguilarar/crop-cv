@@ -14,11 +14,10 @@ from torch.utils.data import Dataset
 
 
 from .datasplit import SplitIdsClassification
-from ..utils.datacube_transforms import MultiDDataTransformer, DataCubeReader
-from ..utils.general import split_filename
+from ..datacubepredictors.segmentation import SegmentationDataCube
 from ..phenotyping.utils import calculate_quantiles, from_quantiles_dict_to_df
-
-from ..uavdl.segmentation_utils import SegmentationDataCube
+from ..spatialdatacube.datacube_processors import MultiDDataTransformer, DataCubeReader
+from ..utils.general import split_filename
 
 import dask
 from dask.diagnostics import ProgressBar
@@ -438,6 +437,22 @@ class DataCubeModelBase(DataCubeTransformBase,ClassificationTarget):
             
     def get_data(self,index, channel_names = None, image_reduction  = None, 
                  transform_options = None, mask_name = None) -> Tuple[np.ndarray, float]:
+        """_summary_
+
+        Parameters
+        ----------
+            index (_type_): _description_
+            channel_names (_type_, optional): _description_. Defaults to None.
+            image_reduction (_type_, optional): _description_. Defaults to None.
+            transform_options (_type_, optional): _description_. Defaults to None.
+            mask_name (_type_, optional): _description_. Defaults to None.
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor]
+            A tuple containing the image tensor and its corresponding target tensor.
+        """
+        
         assert self._idssubset is not None, "Split the data first using _split_data_in_traning_and_validation function"
         idimg, targetval = self.get_target_value(index)
         # get imagery data

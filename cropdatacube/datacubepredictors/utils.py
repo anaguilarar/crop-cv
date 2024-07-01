@@ -9,17 +9,6 @@ import torchvision
 from typing import List, Tuple
 
 
-def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
-
-    def f(x):
-        if x >= warmup_iters:
-            return 1
-        alpha = float(x) / warmup_iters
-        return warmup_factor * (1 - alpha) + alpha
-
-    return torch.optim.lr_scheduler.LambdaLR(optimizer, f)
-
-
 def optimizer_to(optim, device):
     for param in optim.state.values():
         # Not sure there are any global tensors in the state dict
