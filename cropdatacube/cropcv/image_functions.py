@@ -544,8 +544,7 @@ def randomly_shiftimage(img,maxshift = 0.15):
     return stackedimgs
 
 
-def image_zoom(img: np.ndarray, zoom_factor: float = 0, 
-               paddling_value: float = 0) -> np.ndarray:
+def image_zoom(img: np.ndarray, zoom_factor: float = 0) -> np.ndarray:
 
     """
     Performs a centered zoom in or out on the given image without changing its dimensions. 
@@ -574,62 +573,33 @@ def image_zoom(img: np.ndarray, zoom_factor: float = 0,
     if zoom_factor == 0:
         return img
     
-    if zoom_factor>0:
-        zoom_in = False
-        zoom_factor = zoom_factor/100
-    else:
-        zoom_in = True
-        zoom_factor = (-1*zoom_factor/100)
+    height, width = img.shape[:2] 
     
-    height, width = img.shape[:2] # It's also the final desired shape
-    new_height, new_width = int(height * zoom_factor), int(width * zoom_factor)
-    
-    
-
-    if zoom_in:
-
-        y1, x1 = int(new_height)//2 , int(new_width)//2
-        y2, x2 = height - y1 , width - x1
-        bbox = np.array([(height//2 - y1),
-                         (width//2 - x1),
-                         (height//2 + y1),
-                         (width//2 + x1)])
-
-        y1, x1, y2, x2 = bbox
-
-
-        cropped_img = img[y1:y2, x1:x2]
-
-        result = cv2.resize(cropped_img, 
-                        (width, height), 
+    imgres = cv2.resize(img, 
+                        None,
+                        fx = (1+zoom_factor),
+                        fy = (1+zoom_factor),
+                        #(new_width, new_height), 
                         interpolation= cv2.INTER_LINEAR
                         )
-    else:
-        zoom_factor = 1 if zoom_factor == 0 else zoom_factor
-        
-        new_height, new_width = height + int(height * zoom_factor), width + int(width * zoom_factor)
-        if paddling_value == 0:
-            newshape = list(img.shape)
-            newshape[0] = new_height
-            newshape[1] = new_width
-            newimg = np.zeros(newshape).astype(img.dtype)
-        else:
-            newimg = np.ones(newshape).astype(img.dtype) * paddling_value
-          
-        pad_height1, pad_width1 = abs(new_height - height) // 2, abs(new_width - width) //2
-        newimg[pad_height1:(height+pad_height1), pad_width1:(width+pad_width1)] = img
-        
-        result = cv2.resize(newimg, 
-                        (height, width), 
-                        interpolation= cv2.INTER_LINEAR
-                        )
-        #result = np.pad(result, pad_spec)
-        
     
-    assert result.shape[0] == height and result.shape[1] == width, "Resulting image shape does not match the original."
-
-    #result[result<0.000001] = 0.0
-    return result
+    canvas = np.zeros(img.shape, dtype = img.dtype)
+    cx, cy =  imgres.shape[1]/2, imgres.shape[0]/2
+    left = int((cx - width/2))
+    rigth = int((cx + width/2))
+    
+    top = int((cy - height/2))
+    bottom = int((cy + height/2))
+    
+    #y_min = int(max(1+zoom_factor))
+    y_lim = int(min(1+zoom_factor,1)*height)
+    x_lim = int(min(1+zoom_factor,1)*width)
+    if len(canvas.shape) == 2:
+        canvas[0:y_lim,0:x_lim] =  imgres[top:bottom,left:rigth]
+    else:
+        canvas[0:y_lim,0:x_lim,:] =  imgres[top:bottom,left:rigth,:]
+    
+    return canvas
 
 
 def illumination_shift(img, valuel = []):
@@ -654,7 +624,55 @@ def illumination_shift(img, valuel = []):
             
     return imgl.astype(dtype)
 
-def image_rotation(img, angle = []):
+def shear_image(img: np.ndarray, shear_x: float, shear_y: float) -> np.ndarray:
+    """
+    Shear an image by a factor in the x and y axis.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        The input image to be sheared.
+    shear_x : float
+        The shear factor for the image in the x axis. Values must be between 0 and 1.
+    shear_y : float
+        The shear factor for the image in the y axis. Values must be between 0 and 1.
+
+    Returns
+    -------
+    np.ndarray
+        The sheared image.
+    """
+    
+    (h, w) = img.shape[:2]
+    
+    transformmatrix = np.float32([[1, shear_x, 0], [shear_y, 1, 0]])
+    transformmatrix[0,2] = -transformmatrix[0,1] * w/2
+    transformmatrix[1,2] = -transformmatrix[1,0] * h/2
+    
+    sheared_img = cv2.warpAffine(img, transformmatrix, (w, h))
+    
+    return sheared_img
+
+def image_rotation(img: np.ndarray, angle = []) -> np.ndarray:
+    """
+    Rotate an image by a given angle or randomly chosen angle from a list.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        The input image to be rotated.
+    angle : list or float, optional
+        The angle(s) to rotate the image. If a list is provided, an angle 
+        is randomly chosen from the list. If a single float is provided, 
+        that angle is used. Defaults to an empty list, which will result 
+        in no rotation.
+
+    Returns
+    -------
+    np.ndarray
+        The rotated image.
+    """
+    
             # pick angles at random
 
     if isinstance(angle, list):
@@ -665,8 +683,25 @@ def image_rotation(img, angle = []):
     (cX, cY) = (w // 2, h // 2)
     transformmatrix = cv2.getRotationMatrix2D((cX, cY), angle, 1.0)
     rotated = cv2.warpAffine(img, transformmatrix, (w, h))
-
     return rotated
+
+    ##
+    
+    #cos = np.abs(transformmatrix[0, 0])
+    #sin = np.abs(transformmatrix[0, 1])
+
+    # compute the new bounding dimensions of the image
+    #nW = int((h * sin) + (w * cos))
+    #nH = int((h * cos) + (w * sin))
+
+    # adjust the rotation matrix to take into account translation
+    #transformmatrix[0, 2] += (nW / 2) - cX
+    #transformmatrix[1, 2] += (nH / 2) - cY
+
+
+    #rotated = cv2.warpAffine(img, transformmatrix, (nW, nH))
+    
+    
 
 def image_flip(img, flipcode = []):
             # pick angles at random

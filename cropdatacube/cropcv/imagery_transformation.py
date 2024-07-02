@@ -4,7 +4,8 @@ from ..datasets.utils import standard_scale, minmax_scale
 from .image_functions import (image_rotation,image_zoom,randomly_displace,
                               clahe_img, read_image_as_numpy_array,
                               image_flip,shift_hsv,diff_guassian_img,
-                              illumination_shift, from_array_2_jpg)
+                              illumination_shift, from_array_2_jpg,
+                              shear_image)
 
 from ..utils.general import list_files
 
@@ -71,6 +72,7 @@ class ImageAugmentation(object):
                 'multitr': self.multi_transform,
                 'flip': self.flip_image,
                 'hsv': self.hsv,
+                'shear': self.shear_image,
                 #'gaussian': self.diff_gaussian_image,
                 'illumination':self.change_illumination
             
@@ -87,8 +89,10 @@ class ImageAugmentation(object):
         params = None
         default_params = {
                 'rotation': random.randint(10,350),
-                'zoom': random.randint(-85, -65),
+                'zoom': random.choice([0.1,0.2,0.3, 0.4,0.5]),
                 'clahe': random.randint(0,30),
+                'shear': [random.choice(np.linspace(5,40,8)/100),
+                          random.choice(np.linspace(5,40,8)/100)],
                 'shift': random.randint(5, 20),
                 'flip': random.choice([-1,0,1]),
                 'gaussian': random.choice([20,30,40, 50]),
@@ -276,6 +280,50 @@ class ImageAugmentation(object):
 
         return imgtr
     
+    def shear_image(self, img: np.ndarray = None, shear_x: float = None, shear_y:float = None,update:bool = True):
+        """
+        Shear the given image by a specified angle.
+
+        Parameters:
+        ----------
+        img : ndarray, optional
+            The image to be rotated. If None, uses the class's internal image data.
+        shear_x : float, optional
+            The shear factor for shear the image in the x axis. the values must be between 0 to 1
+        shear_y : float, optional
+            The shear factor for shear the image in the y axis. the values must be between 0 to 1
+        update : bool, optional
+            If True, updates the class's internal state with the result.
+
+        Returns:
+        -------
+        ndarray:
+            The rotated image.
+
+        Raises:
+        ------
+        ValueError:
+            If the input image is not in the expected format or dimensions.
+        """
+        
+        if img is None:
+            img = copy.deepcopy(self.img_data)
+        print('first',shear_x, shear_y)
+        if shear_x is None:
+            shear_x, _ = self._random_parameters['shear']
+        if shear_y is None:
+            _, shear_y = self._random_parameters['shear']
+
+        print('here',shear_x, shear_y)
+        imgtr = shear_image(img,shear_x = shear_x, shear_y=shear_y)
+        self._transformparameters['shear'] = [shear_x, shear_y]
+        
+        if update:
+            
+            self.updated_paramaters(tr_type = 'shear')
+            self._new_images['shear'] = imgtr
+
+        return imgtr
     
     def rotate_image(self, img = None, angle = None, update = True):
         """
@@ -386,18 +434,15 @@ class ImageAugmentation(object):
         return imgtr
     
 
-    def shift_ndimage(self,img = None, shift = None, update = True,
+    def shift_ndimage(self,img = None, xshift  = None, yshift = None, update = True,
                       max_displacement = None):
 
-        if max_displacement is None:
+        
+        if max_displacement is None and xshift is None:
             max_displacement = (self._random_parameters['shift'])/100
         if img is None:
             img = copy.deepcopy(self.img_data)
 
-        if shift is not None:
-            xshift, yshift= shift   
-        else:
-            xshift, yshift = None, None
 
         imgtr, displacement =  randomly_displace(img, 
                                                  maxshift = max_displacement, 
@@ -541,7 +586,7 @@ class MultiChannelImage(ImageAugmentation):
                 'rotation': self.rotate_multiimages,
                 'zoom': self.expand_multiimages,
                 'illumination': self.diff_illumination_multiimages,
-                #'gaussian': self.diff_guassian_multiimages,
+                'shear': self.shear_multiimages,
                 'shift': self.shift_multiimages,
                 'multitr': self.multitr_multiimages,
                 'flip': self.flip_multiimages
@@ -615,10 +660,14 @@ class MultiChannelImage(ImageAugmentation):
                                 params= params, update= False)
 
         else:
-            
-            image =  perform(self._run_default_transforms[tr_name],
-                     img,
-                     self.tr_paramaters[tr_name], False)
+            if isinstance(self.tr_paramaters[tr_name],list):
+                image =  perform(self._run_default_transforms[tr_name],
+                        img,
+                        *self.tr_paramaters[tr_name], False)
+            else:
+                image =  perform(self._run_default_transforms[tr_name],
+                        img,
+                        self.tr_paramaters[tr_name], False)
 
         return image
 
@@ -666,10 +715,10 @@ class MultiChannelImage(ImageAugmentation):
         
         return imgs
 
-    def shift_multiimages(self, img=None, shift=None, max_displacement=None,update=True):
+    def shift_multiimages(self, img=None, xshift=None, yshift=None, max_displacement=None,update=True):
 
         self._new_images['shift'] =  self._transform_multichannel(img=img, 
-                    tranformid = 'shift', shift = shift, max_displacement=max_displacement,update=update)
+                    tranformid = 'shift', xshift = xshift, yshift = yshift, max_displacement=max_displacement,update=update)
         return self._new_images['shift']
 
     def rotate_multiimages(self, img=None, angle=None, update=True):
@@ -677,6 +726,12 @@ class MultiChannelImage(ImageAugmentation):
                     tranformid = 'rotation', angle = angle, update=update)
         
         return self._new_images['rotation']
+    
+    def shear_multiimages(self, img=None, shear_x=None, shear_y=None, update=True):
+        self._new_images['shear'] = self._transform_multichannel(img=img, 
+                    tranformid = 'shear', shear_x = shear_x, shear_y=shear_y, update=update)
+        
+        return self._new_images['shear']
     
     def flip_multiimages(self, img=None, flipcode=None, update=True):
         self._new_images['flip'] = self._transform_multichannel(img=img, 
@@ -1019,7 +1074,8 @@ class MultiTimeTransform(MultiChannelImage):
                 'illumination': self.illumination_tempimages,
                 'gaussian': self.diff_guassian_tempimages,
                 'multitr': self.multtr_tempimages,
-                'flip': self.flip_tempimages
+                'flip': self.flip_tempimages,
+                'shear': self.shear_tempimages
             }
 
     def _scale_image(self, img):
@@ -1083,6 +1139,9 @@ class MultiTimeTransform(MultiChannelImage):
     def expand_tempimages(self, ratio=None):
         return self._multi_timetransform(tranformn = 'zoom', ratio = ratio)
 
+    def shear_tempimages(self, shear_x=None, shear_y = None):
+        return self._multi_timetransform(tranformn = 'shear', shear_x = shear_x, shear_y = shear_y)
+    
     def rotate_tempimages(self, angle=None):
         return self._multi_timetransform(tranformn = 'rotation', angle = angle)
     

@@ -1,7 +1,7 @@
 import cv2
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-from typing import Dict, List
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 
 from numpy.core.fromnumeric import size
@@ -317,9 +317,40 @@ def plot_segmenimages(image: np.ndarray, mask_image: np.ndarray,
     return fig
 
 
-def plot_single_image_odlabel(npimages: np.dstack, bbcoords = None,figsize = (12,10), linewidth = 2, edgecolor = 'r')->None:
+def plot_single_image_odlabel(rgbdata: np.ndarray, 
+                              bbcoords: Optional[List[Tuple[float, float, float, float]]] = None,
+                              figsize: Tuple[int, int] = (8, 8), 
+                              linewidth: int = 10, 
+                              edgecolor: str = 'r', 
+                              bbtype: str = 'xyxy',
+                              ax = None) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Plot a single image with optional bounding boxes for object detection labels.
+
+    Parameters
+    ----------
+    rgbdata : np.ndarray
+        RGB image data.
+    bbcoords : list of tuple of float, optional
+        List of bounding box coordinates. Each bounding box is defined by a tuple of four floats.
+    figsize : tuple of int, optional
+        Size of the figure (width, height). Defaults to (8, 8).
+    linewidth : int, optional
+        Line width of the bounding box edges. Defaults to 10.
+    edgecolor : str, optional
+        Color of the bounding box edges. Defaults to 'r'.
+    bbtype : str, optional
+        Type of bounding box coordinates ('xyxy' or 'xxyy'). Defaults to 'xyxy'.
+
+    Returns
+    -------
+    tuple of (plt.Figure, plt.Axes)
+        Matplotlib figure and axes objects.
+    """
+
     fig, ax = plt.subplots(figsize=figsize)
     
+
     plt.rcParams['axes.grid'] = False
     plt.rcParams['xtick.labelsize'] = False
     plt.rcParams['ytick.labelsize'] = False
@@ -327,18 +358,25 @@ def plot_single_image_odlabel(npimages: np.dstack, bbcoords = None,figsize = (12
     plt.rcParams['xtick.bottom'] = False
     plt.rcParams['ytick.left'] = False
     plt.rcParams['ytick.right'] = False
-    ax.imshow(npimages)
+    ax.imshow(rgbdata)
+    
     for i in range(len(bbcoords)):
         if bbcoords is not None and len(bbcoords[i])==4:
             
+            if bbtype == 'xyxy':
+                x1,y1,x2, y2 = bbcoords[i]
+            elif bbtype == 'xxyy':
+                x1,x2,y1,y2 = bbcoords[i]
+                
+            centerx = float(x1)+np.abs((float(x1)-float(x2))/2) 
+            centery = float(y1)+np.abs((float(y1)-float(y2))/2) 
             
-            x1,x2,y1,y2 = bbcoords[i]
-            centerx = x1+np.abs((x1-x2)/2) 
-            centery = y1+np.abs((y1-y2)/2) 
-            
-            rect = patches.Rectangle((x1, y1), abs(x2-x1), abs(y2-y1), linewidth=linewidth, edgecolor=edgecolor, facecolor='none')
+            rect = patches.Rectangle((x1, y1), abs(x2-x1), abs(y2-y1), 
+                                     linewidth=linewidth, edgecolor=edgecolor, facecolor='none')
             ax.scatter(x=centerx, y=centery, c='r', linewidth=2)
             ax.add_patch(rect)
+        
+    return fig, ax
             
             
 def plot_single_image(npimages: np.ndarray, idimage: int = 0, figsize: tuple = (12, 10)) -> None:
