@@ -308,13 +308,13 @@ class ImageAugmentation(object):
         
         if img is None:
             img = copy.deepcopy(self.img_data)
-        print('first',shear_x, shear_y)
+        
         if shear_x is None:
             shear_x, _ = self._random_parameters['shear']
         if shear_y is None:
             _, shear_y = self._random_parameters['shear']
 
-        print('here',shear_x, shear_y)
+        
         imgtr = shear_image(img,shear_x = shear_x, shear_y=shear_y)
         self._transformparameters['shear'] = [shear_x, shear_y]
         

@@ -703,16 +703,30 @@ def image_rotation(img: np.ndarray, angle = []) -> np.ndarray:
     
     
 
-def image_flip(img, flipcode = []):
-            # pick angles at random
+def image_flip(img: np.ndarray, flipcode = [0]) -> np.ndarray:
+    """
+    Flip an image horizontally, vertically, or both.
 
+    Parameters
+    ----------
+    img : np.ndarray
+        The input image to be flipped.
+    flipcode : int or list of int, optional
+        The flip code defining the flip direction:
+        - 0 means flipping around the x-axis (vertical flip).
+        - Positive value (1) means flipping around the y-axis (horizontal flip).
+        - Negative value (-1) means flipping around both axes (vertical and horizontal flip).
+        If a list is provided, a random flip code from the list will be chosen. Defaults to an empty list.
+
+    Returns
+    -------
+    np.ndarray
+        The flipped image.
+    """
     if isinstance(flipcode, list):
         flipcode = random.choice(flipcode)
-    else:
-        flipcode = flipcode
-
     
-    imgflipped = cv2.flip(img, 0)
+    imgflipped = cv2.flip(img, flipcode)
 
     return imgflipped
 
