@@ -215,7 +215,8 @@ class DLTrainerModel(DLBaseEngine):
     def __init__(self, model, train_data_loader,optimizer, validation_data_loader = None, 
                  reporter = None,
                  grad_scaler= None, loss_fcn = None, 
-                 model_weight_path = None) -> None:
+                 model_weight_path = None, weight_dict = None,
+                 reporter_losses = ['epoch', 'iter','loss']) -> None:
         
         super().__init__(model)
 
@@ -225,9 +226,9 @@ class DLTrainerModel(DLBaseEngine):
         self._reporter = reporter
         self._multiclass = False
         self._weight_path = model_weight_path
-        
+        self._weight_dict = weight_dict
         self.grad_scaler = grad_scaler
-
+        self._reporter_losses = reporter_losses
         self.loss_fcn = loss_fcn
         
         if grad_scaler is None:
@@ -258,9 +259,10 @@ class DLTrainerModel(DLBaseEngine):
         # iteration reporter
     def _set_initial_reporter_params(self):
         self._iter_tr_reporter = ReporterBase()
-        self._iter_tr_reporter.set_reporter(['epoch', 'iter','loss'])
+        self._iter_tr_reporter.set_reporter(self._reporter_losses)
         self._iter_eval_reporter = ReporterBase()
-        self._iter_eval_reporter.set_reporter(['epoch', 'eval_iter','eval_loss'])
+        self._iter_eval_reporter.set_reporter(
+            [self._reporter_losses[0]]+['eval_'+i for i in self._reporter_losses[1:]])
         
     
     @property
@@ -279,19 +281,21 @@ class DLTrainerModel(DLBaseEngine):
         
     def compute_loss(self, pred,y):
         
-        if pred.shape[1]>1:
-            self._multiclass = True
+        #if pred.shape[1]>1:
+        #    self._multiclass = True
             #pred = torch.max(pred, dim=1)[1]
             #pred = torch.unsqueeze(pred.type(torch.float32), dim = 1)
             #pred.requires_grad = True
-            y = y.type(torch.long)
-            y = torch.squeeze(y)
+        #    y = y.type(torch.long)
+        #    y = torch.squeeze(y)
             #pred.requires_grad = True
             #y.requires_grad = True
             #losses.requires_grad=True
         
         losses =  self.loss_fcn(pred,y)
-        
+        if self._weight_dict:
+            losses = sum(v * self._weight_dict[k] for k, v in losses.items() if k in self._weight_dict)
+            
         #if self._multiclass:
         #    losses =losses.detach()
 
@@ -403,11 +407,16 @@ class DLTrainerModel(DLBaseEngine):
         max_iter = len(self._tr_data_loader)
         pbar = tqdm(range(max_iter), leave=True, colour='blue', desc="Training")
         for _ in pbar:
-        #    try:
+            try:
                 self.run_iter()
-                pbar.set_postfix(OrderedDict(loss=self.loss))
-        #    except Exception:
-        #        warnings.warn("Exception during training:")
+                toshow = {}
+                for k in self._iter_tr_reporter.report.keys():
+                    toshow[k] = self._iter_tr_reporter.report[k][-1]
+                
+                pbar.set_postfix(OrderedDict(toshow))
+            except Exception:
+                warnings.warn("Exception during training:")
+                
     def run_iter(self):
         """
         Run a single training iteration.
@@ -420,8 +429,9 @@ class DLTrainerModel(DLBaseEngine):
         x, y = next(self._data_loader_iter)
         
         if isinstance(y, tuple):
-            x = list(image.to(self.device) for image in x)
-            y = [{k: v.to(self.device) for k, v in t.items()} for t in y]
+            x = torch.cat([torch.unsqueeze(image, dim=0).to(self.device) for image in x])
+            #torch.cat([torch.unsqueeze(n, dim=0) for n in data[0]])
+            y = [{k: v.to(self.device) for k, v in t.items() if isinstance(v, torch.Tensor)} for t in y]
         else:
             y = y.to(self.device)
             x = x.to(self.device)
@@ -431,11 +441,17 @@ class DLTrainerModel(DLBaseEngine):
         if self.loss_fcn is not None:
             with torch.cuda.amp.autocast():
                 output = self.model(x)
-            losses = self.compute_loss(output, y)
+            loss_output = self.compute_loss(output, y)
+            
         else:
             with torch.cuda.amp.autocast():
-                loss_dict = self.model(x, y)
-            losses = sum(loss for loss in loss_dict.values())
+                loss_output = self.model(x, y)
+        
+        if isinstance(loss_output, dict):
+            losses = sum(loss for loss in loss_output.values())
+            loss_output.update({'loss': losses})
+        else:
+            losses = loss_output
             
         #if self._multiclass:
         #    losses.backward()
@@ -447,7 +463,7 @@ class DLTrainerModel(DLBaseEngine):
         self.optimizer.zero_grad()
             
         #write losses losses
-        self._save_loss(losses)
+        self._save_loss(loss_output)
         self._write_iter_metrics()
 
         self.lr_scheduler.step()

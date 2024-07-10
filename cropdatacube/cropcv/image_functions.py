@@ -198,9 +198,9 @@ def read_image_as_numpy_array(path, scale_factor=None,
 def cv2_array_type(arrayimage):
     
     imgcvtype = arrayimage.copy()
-    if not np.max(imgcvtype)>120:
+    if not np.nanmax(imgcvtype)>120:
         imgcvtype = imgcvtype*255
-        
+    imgcvtype[np.isnan(imgcvtype)] = 0
     imgcvtype[imgcvtype<0] = 0
     imgcvtype[imgcvtype>255] = 255
     imgcvtype = imgcvtype.astype(np.uint8)
@@ -617,10 +617,10 @@ def illumination_shift(img, valuel = []):
     imgl,_ = shift_hsv(imgrgb, hue_shift = 0, sat_shift=0, 
                        val_shift = valuel)
 
-    if img.shape[0] == 3:
-        imgl = imgl.swapaxes(2,1).swapaxes(1,0)
-    if np.max(img) < 2:
-        imgl = imgl/255.
+    #if img.shape[0] == 3:
+    #    imgl = imgl.swapaxes(2,1).swapaxes(1,0)
+    #if np.nanmax(img) < 2:
+    #    imgl = imgl/255.
             
     return imgl.astype(dtype)
 
@@ -700,7 +700,34 @@ def image_rotation(img: np.ndarray, angle = []) -> np.ndarray:
 
 
     #rotated = cv2.warpAffine(img, transformmatrix, (nW, nH))
+
+def perspective_transform(img: np.ndarray, perspective_x: float = 0.001, perspective_y: float = 0.001) -> np.ndarray:
+    """
+    Apply a perspective transformation to an image.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        The input image to be transformed.
+    perspective_x : float, optional
+        The perspective transformation factor along the x-axis. Default is 0.001.
+    perspective_y : float, optional
+        The perspective transformation factor along the y-axis. Default is 0.001.
+
+    Returns
+    -------
+    np.ndarray
+        The image after applying the perspective transformation.
+    """
     
+    M = np.eye(3)
+    M[2,0] = perspective_y
+    M[2,1] = perspective_x
+    w, h = img.shape[:2]
+    
+    imper = cv2.warpPerspective(img, M, dsize=(h,w))
+    
+    return imper
     
 
 def image_flip(img: np.ndarray, flipcode = [0]) -> np.ndarray:
@@ -984,9 +1011,6 @@ def clahe_img(img, clip_limit=2.0, tile_grid_size=(8, 8)):
         # pick angles at random
         clip_limit = random.choice(clip_limit)
 
-    if img.dtype != np.uint8:
-        raise TypeError("clahe supports only uint8 inputs")
-
     clahe_mat = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
 
     if len(img.shape) == 2 or img.shape[2] == 1:
@@ -999,8 +1023,27 @@ def clahe_img(img, clip_limit=2.0, tile_grid_size=(8, 8)):
     return img, [str(clip_limit)]
 
 ### hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-def shift_hsv(img, hue_shift, sat_shift, val_shift):
+def shift_hsv(img: np.ndarray, hue_shift, sat_shift, val_shift):
+    """
+    Shift the hue, saturation, and value (brightness) of an image.
+`
+    Parameters
+    ----------
+    img : np.ndarray`
+        The input image in RGB format.
+    hue_shift : int or list of int
+        The amount to shift the hue channel. If a list is provided, a random value from the list will be chosen.
+    sat_shift : int or list of int
+        The amount to shift the saturation channel. If a list is provided, a random value from the list will be chosen.
+    val_shift : int or list of int
+        The amount to shift the value (brightness) channel. If a list is provided, a random value from the list will be chosen.
 
+    Returns
+    -------
+    tuple[np.ndarray, list[str]]
+        The image with adjusted HSV values and a list containing the applied shifts as a string.
+    """
+    
     if type(sat_shift) == list:
         # pick angles at random
         sat_shift = random.choice(sat_shift)
@@ -1013,6 +1056,7 @@ def shift_hsv(img, hue_shift, sat_shift, val_shift):
         # pick angles at random
         val_shift = random.choice(val_shift)
 
+    
     dtype = img.dtype
     img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     hue, sat, val = cv2.split(img)

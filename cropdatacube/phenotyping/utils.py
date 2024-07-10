@@ -129,7 +129,7 @@ def line_intersection(line1: List[Tuple[float, float]], line2: List[Tuple[float,
     return x, y
 
 
-def perpendicular_points_to_line(linecoords: List[float], points: np.ndarray, diff_factor: float = 0.1) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
+def perpendicular_points_to_line(linecoords: List[float], points: np.ndarray, diff_factor: float = 0.1, eos = 1e-16) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
     """
     Get perpendicular points to a line.
 
@@ -149,16 +149,58 @@ def perpendicular_points_to_line(linecoords: List[float], points: np.ndarray, di
     """
     
     x1,y1,x2,y2 = linecoords
-    slope_points = (y2-y1)/(x2-x1)
-    
     perpendicular_coords = []
+    
+    if (x2-x1) == 0:
+        return  finding_horizontal(points)
+        slope_points = 1
+    if (y2-y1) == 0:
+        return  finding_vertical(points)
+    
+    slope_points = (y2-y1)/((x2-x1)+eos)
+    
     for i in range(points.shape[0]):
         pi0 = points[i]
         for j in range(i, points.shape[0]):
             pj1 = points[j]
             if (pi0[0]-pj1[0]) !=0:
-                is_perpendicular = slope_points * (pi0[1]-pj1[1])/(pi0[0]-pj1[0])
+                is_perpendicular = slope_points * (pi0[1]-pj1[1])/((pi0[0]-pj1[0]))
                 if -1.0 - diff_factor <= is_perpendicular <= -1.0 + diff_factor:
                     perpendicular_coords.append([pi0, pj1])
 
     return perpendicular_coords
+
+
+def finding_horizontal(points, diff_factor = 0.001):
+    horizontal_points = []
+    #pn = np.array(points) sif isinstance(points, list) else points
+    #dif_x = pn[:]
+    
+    for i in range(points.shape[0]):
+        pi0 = points[i]
+        for j in range(i, points.shape[0]):
+            pj1 = points[j]
+            if (pi0[0]-pj1[0]) !=0:
+                mvals = (pi0[1]-pj1[1])
+                if np.abs(0 + mvals)  <= diff_factor:
+                    horizontal_points.append([pi0, pj1])
+
+    return horizontal_points
+
+
+def finding_vertical(points, diff_factor = 0.001):
+    vertical_points = []
+    #pn = np.array(points) sif isinstance(points, list) else points
+    #dif_x = pn[:]
+    
+    for i in range(points.shape[0]):
+        pi0 = points[i]
+        for j in range(i, points.shape[0]):
+            pj1 = points[j]
+            if (pi0[1]-pj1[1]) !=0:
+                mvals = (pi0[0]-pj1[0])
+                if np.abs(0 + mvals)  <= diff_factor:
+                    vertical_points.append([pi0, pj1])
+
+    return vertical_points
+    

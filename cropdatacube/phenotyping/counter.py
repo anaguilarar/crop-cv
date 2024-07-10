@@ -206,6 +206,7 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
         """
         self._reset_seed_metrics()
         self._seedid = seedid
+
         self._seedrgb, self._seedmask = self._clip_rgb_and_mask(seedid, padding_percentage = padding_percentage, maskrgb = True)    
         self._lengthpoints, self._widthpoints = self.get_length_and_widths_coordinates(self._seedmask, perpendicular_tolerance=perpendicular_tolerance)
         _, self._seedcgcenter, self._seediscenter = self.distance_between_centers(mask_image = self._seedmask, 

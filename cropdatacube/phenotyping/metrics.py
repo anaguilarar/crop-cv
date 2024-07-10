@@ -261,6 +261,7 @@ class ShapeMetricsFromMaskedLayer:
             diff_factor= diff_factor*10
         
         perpdistances = [euclidean_distance(p1,p2) for p1, p2 in perppoints]
+        
         maxlpos = np.where(perpdistances == np.max(perpdistances))[0]
 
         maxlpos = maxlpos[0] if len(maxlpos)>0 else maxlpos

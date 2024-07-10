@@ -5,12 +5,10 @@ from .image_functions import (image_rotation,image_zoom,randomly_displace,
                               clahe_img, read_image_as_numpy_array,
                               image_flip,shift_hsv,diff_guassian_img,
                               illumination_shift, from_array_2_jpg,
-                              shear_image)
+                              shear_image,cv2_array_type,perspective_transform)
 
-from ..utils.general import list_files
 
-from .detection_plots import plot_single_image, plot_single_image_odlabel
-from .bb_utils import from_yolo_toxy, percentage_to_bb, bb_topercentage, LabelData
+from .bb_utils import percentage_to_bb
 
 from tqdm import tqdm
 
@@ -18,10 +16,10 @@ from tqdm import tqdm
 import numpy as np
 import cv2
 import copy
-import os
+
 import random
 from PIL import Image
-import itertools
+
 
 class ImageAugmentation(object):
     """
@@ -30,7 +28,7 @@ class ImageAugmentation(object):
     """
 
     
-    def __init__(self, img: Union[str, np.ndarray], 
+    def __init__(self, img: Union[str, np.ndarray] = None, 
                  random_parameters: Optional[dict] = None, 
                  multitr_chain: Optional[List[str]] = None) -> None:
         """
@@ -51,7 +49,8 @@ class ImageAugmentation(object):
         self.tr_paramaters = {}
         
         self.img_data = None
-        self.img_data = cv2.imread(img) if isinstance(img, str) else copy.deepcopy(img)
+        if img is not None:
+            self.img_data = cv2.imread(img) if isinstance(img, str) else copy.deepcopy(img)
 
         self._init_random_parameters = random_parameters
         self._multitr_chain = multitr_chain
@@ -73,12 +72,24 @@ class ImageAugmentation(object):
                 'flip': self.flip_image,
                 'hsv': self.hsv,
                 'shear': self.shear_image,
+                'perspective': self.perspective_image,
                 #'gaussian': self.diff_gaussian_image,
-                'illumination':self.change_illumination
-            
+                'illumination':self.change_illumination    
             }
         
-
+    @property    
+    def params_kwargs(self):
+        return {
+            'rotation': 'angle',
+            'zoom': 'zoom_factor',
+            'clahe': 'thr_constrast',
+            'shear': ['shear_x','shear_y'],
+            'shift': ['xshift','yshift'],
+            'flip': 'flipcode',
+            'gaussian': 'high_sigma',
+            'hsv': 'hsvparams',
+            'illumination': 'illuminationparams'
+            }
 
     @property
     def _augmented_images(self):
@@ -90,15 +101,18 @@ class ImageAugmentation(object):
         default_params = {
                 'rotation': random.randint(10,350),
                 'zoom': random.choice([0.1,0.2,0.3, 0.4,0.5]),
-                'clahe': random.randint(0,30),
+                'clahe': random.randint(5,30),
                 'shear': [random.choice(np.linspace(5,40,8)/100),
                           random.choice(np.linspace(5,40,8)/100)],
+                'perspective': [random.choice(np.linspace(-10,10,10)/10000) ,
+                                random.choice(np.linspace(-10,10,10)/10000) ],
+                
                 'shift': random.randint(5, 20),
                 'flip': random.choice([-1,0,1]),
                 'gaussian': random.choice([20,30,40, 50]),
-                'hsv': [list(range(-30,30,5)),
-                        list(range(-20,20,5)), 
-                        list(range(-20,20,5))],
+                'hsv': [random.choice(list(range(-10,30,5))),
+                        random.choice(list(range(-10,20,5))), 
+                        random.choice(list(range(-10,20,5)))],
                 'illumination':random.choice(list(range(-50,50,5)))
             }
         
@@ -114,7 +128,7 @@ class ImageAugmentation(object):
             
         return params    
     
-    def _select_random_transforms(self):
+    def _select_random_transforms(self, n_chains = 4):
         """
         Randomly selects a set of transformations for multi-transform.
 
@@ -124,10 +138,11 @@ class ImageAugmentation(object):
             A list of randomly selected transformation names.
         """
         chain_transform = []
-        while len(chain_transform) <= 3:
+        while len(chain_transform) < n_chains:
             trname = random.choice(list(self._run_default_transforms.keys()))
-            if trname != 'multitr':
+            if trname != 'multitr' and trname not in chain_transform:
                 chain_transform.append(trname)
+                
         return chain_transform
 
     def updated_paramaters(self, tr_type):
@@ -176,7 +191,7 @@ class ImageAugmentation(object):
 
         imgtr = copy.deepcopy(img)
         augmentedsuffix = {}
-        
+        print(chain_transform)
         for transform_name in chain_transform:
             if params is None:
                 imgtr = perform_kwargs(self._run_default_transforms[transform_name],
@@ -280,6 +295,51 @@ class ImageAugmentation(object):
 
         return imgtr
     
+    def perspective_image(self, img: np.ndarray = None, perspective_x: float = None, perspective_y: float = None,update:bool = True):
+        """
+        Apply a perspective transformation to an image.
+
+        Parameters:
+        ----------
+        img : np.ndarray
+        The input image to be transformed.
+        perspective_x : float, optional
+            The perspective transformation factor along the x-axis.
+        perspective_y : float, optional
+            The perspective transformation factor along the y-axis.
+        update : bool, optional
+            If True, updates the class's internal state with the result.
+
+        Returns:
+        -------
+        ndarray:
+            The rotated image.
+
+        Raises:
+        ------
+        ValueError:
+            If the input image is not in the expected format or dimensions.
+        """
+        
+        if img is None:
+            img = copy.deepcopy(self.img_data)
+        
+        if perspective_x is None:
+            perspective_x, _ = self._random_parameters['perspective']
+        if perspective_y is None:
+            _, perspective_y = self._random_parameters['perspective']
+
+        
+        imgtr = perspective_transform(img,perspective_x = perspective_x, perspective_y=perspective_y)
+        self._transformparameters['perspective'] = [perspective_x, perspective_y]
+        
+        if update:
+            
+            self.updated_paramaters(tr_type = 'perspective')
+            self._new_images['perspective'] = imgtr
+
+        return imgtr
+    
     def shear_image(self, img: np.ndarray = None, shear_x: float = None, shear_y:float = None,update:bool = True):
         """
         Shear the given image by a specified angle.
@@ -365,38 +425,6 @@ class ImageAugmentation(object):
 
         return imgtr
 
-    def hsv(self, img = None, hsvparams =None, update = True):
-        if img is None:
-            img = copy.deepcopy(self.img_data)
-        if hsvparams is None:
-            hsvparams = self._random_parameters['hsv']
-            
-        imgtr,_ = shift_hsv(img,hue_shift=hsvparams[0], sat_shift = hsvparams[1], val_shift = hsvparams[2])
-        
-        self._transformparameters['hsv'] = hsvparams
-        if update:
-            
-            self.updated_paramaters(tr_type = 'hsv')
-            self._new_images['hsv'] = imgtr
-
-        return imgtr
-    
-    def change_illumination(self, img = None, illuminationparams =None, update = True):
-        if img is None:
-            img = copy.deepcopy(self.img_data)
-        if illuminationparams is None:
-            illuminationparams = self._random_parameters['illumination']
-            
-        imgtr = illumination_shift(img,valuel = illuminationparams)
-        
-        self._transformparameters['illumination'] = illuminationparams
-        if update:
-            
-            self.updated_paramaters(tr_type = 'illumination')
-            self._new_images['illumination'] = imgtr
-
-        return imgtr
-    
     def flip_image(self, img = None, flipcode = None, update = True):
 
         if img is None:
@@ -456,6 +484,30 @@ class ImageAugmentation(object):
 
         return imgtr#.astype(np.uint8)
     
+    def change_illumination(self, img = None, illuminationparams =None, update = True):
+        if img is None:
+            img = copy.deepcopy(self.img_data)
+        if illuminationparams is None:
+            illuminationparams = self._random_parameters['illumination']
+        
+        
+        cv2img = cv2_array_type(img)
+           
+        imgtr = illumination_shift(cv2img,valuel = illuminationparams)
+        
+        if img.shape[0] == 3:
+            imgtr = imgtr.swapaxes(2,1).swapaxes(1,0)
+        if np.nanmax(img) < 2:
+            imgtr = imgtr/255.
+            
+        self._transformparameters['illumination'] = illuminationparams
+        if update:
+            
+            self.updated_paramaters(tr_type = 'illumination')
+            self._new_images['illumination'] = imgtr
+
+        return imgtr
+    
     def clahe(self, img= None, thr_constrast = None, update = True):
 
         if thr_constrast is None:
@@ -463,9 +515,16 @@ class ImageAugmentation(object):
         
         if img is None:
             img = copy.deepcopy(self.img_data)
-
-        imgtr,_ = clahe_img(img, clip_limit=thr_constrast)
         
+        cv2img = cv2_array_type(img)
+        
+        imgtr,_ = clahe_img(cv2img, clip_limit=thr_constrast)
+        
+        if img.shape[0] == 3:
+            imgtr = imgtr.swapaxes(2,1).swapaxes(1,0)
+        if np.nanmax(img) < 2:
+            imgtr = imgtr/255.
+            
         self._transformparameters['clahe'] = thr_constrast
         if update:
             
@@ -474,6 +533,29 @@ class ImageAugmentation(object):
             
         return imgtr
 
+    def hsv(self, img = None, hsvparams =None, update = True):
+        if img is None:
+            img = copy.deepcopy(self.img_data)
+        if hsvparams is None:
+            hsvparams = self._random_parameters['hsv']
+        
+        cv2img = cv2_array_type(img)
+        
+        imgtr,_ = shift_hsv(cv2img,hue_shift=hsvparams[0], sat_shift = hsvparams[1], val_shift = 0)
+        
+        if img.shape[0] == 3:
+            imgtr = imgtr.swapaxes(2,1).swapaxes(1,0)
+        if np.nanmax(img) < 2:
+            imgtr = imgtr/255.
+        
+        self._transformparameters['hsv'] = hsvparams
+        if update:
+            
+            self.updated_paramaters(tr_type = 'hsv')
+            self._new_images['hsv'] = imgtr
+
+        return imgtr
+    
     def random_augmented_image(self,img= None, update = True):
         if img is None:
             img = copy.deepcopy(self.img_data)
@@ -519,9 +601,9 @@ class ImageAugmentation(object):
 
 class MultiChannelImage(ImageAugmentation):
     """
-    A subclass of ImageAugmentation designed to handle and transform multi-channel images,
-    such as RGB or multispectral images. This class extends the basic functionality with multiple image-specific
-    transformations and handles both single and batch operations on image data.
+    A class to handle and transform multi-channel images, such as RGB or multispectral images.
+    This class extends basic functionality with multiple image-specific transformations and 
+    handles both single and batch operations on image data.
 
     Attributes
     ----------
@@ -541,8 +623,8 @@ class MultiChannelImage(ImageAugmentation):
     """
     
     
-    def __init__(self, img, img_id = None, 
-                 channels_order = 'first', transforms = None, **kwargs) -> None:
+    def __init__(self, img: np.ndarray = None, img_id: str = None, 
+                 channels_order: str = 'first', transforms: List[str] = None, **kwargs) -> None:
         """
         Initializes the MultiChannelImage class with a multi-channel image and additional parameters.
 
@@ -558,12 +640,7 @@ class MultiChannelImage(ImageAugmentation):
         transforms : list of str, optional
             A list of transformation names to be available for the image. If None, all default transformations are used.
         **kwargs : dict
-            Additional keyword arguments to be passed to the parent ImageAugmentation class.
-
-        Raises
-        ------
-        ValueError
-            If `channels_order` is not recognized.
+            Additional keyword arguments.
         """
         
         if channels_order not in ['first', 'last']:
@@ -574,12 +651,20 @@ class MultiChannelImage(ImageAugmentation):
 
         self.scaler = None
         self.orig_imgname = img_id or "image"
-        self._initimg = img[0] if channels_order == 'first' else img[:,:,0]
-       
+        if img is not None:
+            self._initimg = img[0] if channels_order == 'first' else img[:,:,0]
+        else:
+            self._initimg = None
         self.mlchannel_data = img
 
         super().__init__(self._initimg, **kwargs)
+    
+    def __call__(self, img: np.ndarray, transform, **kwargs):
         
+        imgval = self._transform_multichannel(img.copy(),transform, **kwargs)
+        return imgval
+                
+    
     @property
     def _run_multichannel_transforms(self):
         return  {
@@ -588,8 +673,11 @@ class MultiChannelImage(ImageAugmentation):
                 'illumination': self.diff_illumination_multiimages,
                 'shear': self.shear_multiimages,
                 'shift': self.shift_multiimages,
-                'multitr': self.multitr_multiimages,
-                'flip': self.flip_multiimages
+                #'multitr': self.multitr_multiimages,
+                'flip': self.flip_multiimages,
+                'clahe': self.clahe_multiimages,
+                'hsv': self.hsv_multiimages,
+                'perspective': self.perspective_multiimages
             }
     
 
@@ -650,7 +738,22 @@ class MultiChannelImage(ImageAugmentation):
             
         return datascaled
     
-    def _tranform_channelimg_function(self, img, tr_name):
+    def _tranform_channelimg_function(self, img: np.ndarray, tr_name: str) -> np.ndarray:
+        """
+        Transforms a single channel image based on the specified transformation name.
+
+        Parameters
+        ----------
+        img : np.ndarray
+            The single channel image data to be transformed.
+        tr_name : str
+            The name of the transformation to apply.
+
+        Returns
+        -------
+        np.ndarray
+            The transformed single channel image.
+        """
         
     
         if tr_name == 'multitr':
@@ -690,20 +793,20 @@ class MultiChannelImage(ImageAugmentation):
             The transformed multi-channel image data.
         """
         
-        if img is not None:
-            trimgs = img
-        else:
-            trimgs = self.mlchannel_data
-        if tranformid != 'illumination':
+        trimgs = img if img is not None else self.mlchannel_data
+        #if tranformid == 'multitr':
+        
+        if tranformid == 'raw':
+            return trimgs
+        
+        if tranformid not in ['illumination', 'clahe', 'hsv']:
             
             imgs= [perform_kwargs(self._run_default_transforms[tranformid],
                         img = trimgs[0],
                         **kwargs)]
             
-            for i in range(1,trimgs.shape[0]):
-                r = self._tranform_channelimg_function(trimgs[i],tranformid)
-                imgs.append(r)
-
+            imgs = imgs + [self._tranform_channelimg_function(trimgs[i],tranformid) for i in range(1,trimgs.shape[0])]
+            
             imgs = np.stack(imgs, axis = 0)
             
         else:
@@ -726,6 +829,12 @@ class MultiChannelImage(ImageAugmentation):
                     tranformid = 'rotation', angle = angle, update=update)
         
         return self._new_images['rotation']
+    
+    def perspective_multiimages(self, img=None, perspective_x=None, perspective_y=None, update=True):
+        self._new_images['perspective'] = self._transform_multichannel(img=img, 
+                    tranformid = 'perspective', perspective_x = perspective_x, perspective_y=perspective_y, update=update)
+        
+        return self._new_images['perspective']
     
     def shear_multiimages(self, img=None, shear_x=None, shear_y=None, update=True):
         self._new_images['shear'] = self._transform_multichannel(img=img, 
@@ -751,6 +860,12 @@ class MultiChannelImage(ImageAugmentation):
         
         return self._new_images['illumination']
     
+    def hsv_multiimages(self, img= None, hsvparams = None, update = True):
+        self._new_images['hsv'] = self._transform_multichannel(img=img, 
+                    tranformid = 'hsv', hsvparams = hsvparams, update=update)
+        
+        return self._new_images['hsv']
+    
     def clahe_multiimages(self, img= None, thr_constrast = None, update = True):
         self._new_images['clahe'] = self._transform_multichannel(img=img, 
                     tranformid = 'clahe', thr_constrast = thr_constrast, update=update)
@@ -775,31 +890,68 @@ class MultiChannelImage(ImageAugmentation):
                     params=params, update=update)
         
         return self._new_images['multitr']
+    
+    def apply_transform_chain(self, transformations: List[str] = None, n_chains: int = 2) -> np.ndarray:
+        """
+        Applies a chain of random transformations to the multi-channel image.
 
-    def random_transform(self, augfun = None, verbose = False):
-                
+        Parameters
+        ----------
+        transformation: list, optional
+            The name of the transformations.
+            
+        n_chains : int, optional
+            The number of transformations to chain. Default is 2.
+
+        Returns
+        -------
+        np.ndarray
+            The transformed multi-channel image data.
+        """
+        
+        self._transformparameters = {}
+        transformations = self._select_random_transforms(n_chains=n_chains) if transformations is None else transformations
+
+        imgval = self.mlchannel_data.copy()
+        for trfun in transformations:
+            imgval = self._run_multichannel_transforms[trfun](imgval)
+        
+        return imgval 
+
+    def random_transform(self, augfun: str = None, verbose: bool = False, parameters: dict = None) -> np.ndarray:
+        """
+        Applies a random transformation to the multi-channel image.
+
+        Parameters
+        ----------
+        augfun : str, optional
+            The name of the augmentation function to use. If None, a random function is chosen.
+        verbose : bool, optional
+            If True, prints the applied transformation name.
+        parameters : dict, optional
+            Additional parameters for the transformation.
+
+        Returns
+        -------
+        np.ndarray
+            The randomly transformed multi-channel image data.
+        """        
         if augfun is None:
             augfun = random.choice(self._availableoptions)
         elif type(augfun) is list:
             augfun = random.choice(augfun)
         
         if augfun not in self._availableoptions:
-            print(f"""that augmentation option is not into default parameters {self._availableoptions},
+            print(f"""That augmentation option is not in default parameters {self._availableoptions},
                      no transform was applied""")
             augfun = 'raw'
         
-        
-        if augfun == 'raw':
-            imgtr = self.mlchannel_data.copy()
-            imgtr = self._scale_multichannels_data(imgtr)
-            
-        else:
-            imgtr = perform_kwargs(self._run_multichannel_transforms[augfun])
-            imgtr = self._scale_multichannels_data(imgtr)
-        
+        imgtr = self.mlchannel_data.copy() if augfun == 'raw' else perform_kwargs(self._run_multichannel_transforms[augfun])
+        imgtr = self._scale_multichannels_data(imgtr)
+
         if verbose:
-            print('{} was applied'.format(augfun))
-        #imgtr = self._scale_image(imgtr)
+            print(f'{augfun} was applied')
+            
         return imgtr
     
     
@@ -1212,412 +1364,4 @@ def export_masked_image(image, ground_box, filename):
 
     image.save(filename)
     print("Image saved: {}".format(filename))
-
-
-class TransformYOLOData:
-    """
-    A class to manage and augment image data.
-
-    Attributes
-    ----------
-    _path_files : List[str]
-        List of file paths for the images.
-    _input_path : str
-        The input directory path.
-    jpg_path_files : List[str]
-        List of jpg file paths.
-    _augmented_data : dict
-        Dictionary to store augmented image data.
-    _labels : dict
-        Dictionary to store labels for the images.
-    id_image : List[int]
-        List of image IDs.
-
-    Methods
-    -------
-    od_labels()
-        Returns object detection labels.
-    images_data()
-        Returns a dictionary of image data.
-    images_names()
-        Returns a dictionary of image names.
-    split_data_into_tiles(data_type=None, **kwargs)
-        Splits images into tiles and stores the results.
-    aug_constrast_image(data_type=None, samplesize=None, seed=123, **kwargs)
-        Applies contrast augmentation to the images.
-    aug_clahe_image(data_type=None, samplesize=None, seed=123, **kwargs)
-        Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) augmentation to the images.
-    aug_rotate_image(data_type=None, samplesize=None, seed=123, **kwargs)
-        Applies rotation augmentation to the images.
-    aug_expand_image(data_type=None, samplesize=None, seed=123, **kwargs)
-        Applies expansion augmentation to the images.
-    aug_change_hsv(data_type=None, samplesize=None, seed=123, **kwargs)
-        Applies HSV (Hue, Saturation, Value) augmentation to the images.
-    aug_blur_image(data_type=None, samplesize=None, seed=123, **kwargs)
-        Applies blur augmentation to the images.
-    plot_image(id_image=0, figsize=(12, 10), add_label=False, sourcetype='raw')
-        Plots a single image with optional labels.
-    to_jpg(output_path, data_type=None, size=None, verbose=False)
-        Saves the image data to jpg files.
-    _read_single_image(id_image=0, scale_factor=None, size=None, pattern="\\", pos_id=-2)
-        Reads a single image from the file.
-    _organice_data(idx, kwargs)
-        Organizes image data for processing.
-    multiple_images(n_samples=None, scale_factor=None, size=None, shuffle=True, seed=123, start=0, read_images=True)
-        Processes multiple images.
-    read_image_data(id_images=None, scale_factor=None, size=None, pattern="\\", pos_id=-2)
-        Reads image data from the files.
-    _augmentation(func, datainput, label=None, samplesize=None, seed=123, **kwargs)
-        Applies augmentation function to the image data.
-    _check_applyaug2specifictype(augtype=None, labelnewtype=None)
-        Checks and returns the applicable augmentation types.
-    """
-    @property
-    def od_labels(self):
-
-        return self._labels
-    
-    @property
-    def images_data(self):
-        data = {}
-        for datatype in list(self._augmented_data.keys()):
-            currentdata = {datatype: self._augmented_data[datatype]['imgs']}
-
-            data.update(currentdata)
-
-        return data
-    
-    @property
-    def images_names(self):
-        imgnames = {}
-        for datatype in list(self._augmented_data.keys()):
-            currentdata = {datatype: self._augmented_data[datatype]['names']}
-
-            imgnames.update(currentdata)
-
-        return imgnames
-        
-    def _check_applyaug2specifictype(self, augtype = None, labelnewtype = None):
-
-        if augtype is not None:
-            augtype = [augtype] if type(augtype) != list else augtype
-        else:
-            augtype = self._augmented_data.keys()
-
-        augtype = [i for i in augtype if i != labelnewtype]
-
-        return augtype
-
-    def _augmentation(self, func, datainput, label = None, samplesize=None,seed = 123, **kwargs):
-        """
-        samplesize: int, percentage of data which will be sampled
-        """
-        if label is None:
-            label= "augmentation_{}".format(
-                len(list(self._augmented_data.keys()))+1)
-        listimgs = []
-        fnlist = []
-        odlabels = []
-        for datatype in datainput:
-            imgstoprocess = self._augmented_data[datatype]
-            idimages = range(len(imgstoprocess['imgs']))
-            if samplesize is not None:
-                lensample = int(len(imgstoprocess['imgs'])*float(samplesize)/100.)
-                random.seed(seed)
-                idimages = random.sample(idimages, lensample)
-
-            for idimage in idimages:
-                
-                newdata, combs = eval("{}(imgstoprocess['imgs'][idimage],**{})".format(
-                                      func,
-                                      kwargs))
-                 
-                fnlist.append([
-                    "{}_{}_{}".format(
-                        imgstoprocess['names'][idimage],
-                        label,
-                        comb) for comb in combs]) 
-
-                if self.od_labels[datatype] is not None:
-
-                    bb = eval(
-                            "label_transform(imgstoprocess['imgs'][idimage].shape,self.od_labels[datatype][idimage],label,combs)")
-                    if label == 'contrast':
-                        for i in range(len(combs)):
-                            odlabels.append(bb)
-                    else:
-                        odlabels.append(bb)
-                            
-
-
-                listimgs.append(newdata)
-        if label in ['contrast','tiles']:
-            listimgs= list(itertools.chain.from_iterable(listimgs))
-
-        newdata = {label: {'imgs': listimgs,
-                           'names': list(itertools.chain.from_iterable(fnlist))}}
-
-        self._augmented_data.update(newdata)
-        print('{} were added to images data'.format(len(listimgs)))
-
-        # label
-        if len(odlabels)>0:
-            newdata = {label: odlabels}
-        else:
-            newdata = {label: None}
-        self._labels.update(newdata)
-
-    
-    def split_data_into_tiles(self, data_type=None, **kwargs):
-        labeld = 'tiles'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "split_image"
-        self._augmentation(fun, data_type, label = labeld, **kwargs)
-
-
-    def aug_constrast_image(self, data_type=None, samplesize=None,seed = 123,**kwargs):
-        labeld = 'contrast'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "change_images_contrast"
-        self._augmentation(fun, data_type, label = labeld, samplesize=samplesize,seed = seed,**kwargs)
-
-    def aug_clahe_image(self, data_type=None, samplesize=None,seed = 123,**kwargs):
-        labeld = 'clahe'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "clahe_img"
-        self._augmentation(fun, data_type, label = labeld, samplesize=samplesize,seed = seed,**kwargs)
-
-
-    def aug_rotate_image(self, data_type=None,samplesize=None,seed = 123, **kwargs):
-        labeld = 'rotate'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "rotate_npimage"
-        self._augmentation(fun, data_type, label = labeld, samplesize=samplesize,seed = seed, **kwargs)
-    
-
-    def aug_expand_image(self, data_type=None, samplesize=None,seed = 123,**kwargs):
-        labeld = 'expand'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "expand_npimage"
-        
-        self._augmentation(fun, data_type, label = labeld, samplesize=samplesize,seed = seed, **kwargs)
-
-    def aug_change_hsv(self, data_type=None,samplesize=None,seed = 123, **kwargs):
-        labeld = 'hsv'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "shift_hsv"
-        
-        self._augmentation(fun, data_type, label = labeld, samplesize=samplesize,seed = seed, **kwargs)
-        
-
-    def aug_blur_image(self, data_type=None,samplesize=None,seed = 123, **kwargs):
-        labeld = 'blur'
-        data_type = self._check_applyaug2specifictype(data_type, labeld)
-        fun = "blur_image"
-        
-        self._augmentation(fun, data_type, label = labeld, samplesize=samplesize,seed = seed, **kwargs)
-
-
-    def plot_image(self, id_image=0, figsize=(12, 10), add_label=False, sourcetype = 'raw'):
-        if add_label and self.od_labels[sourcetype] is not None:
-            vector = []
-            imgsize = (self.images_data[sourcetype][id_image].shape[0], self.images_data[sourcetype][id_image].shape[1])
-            for j in range(len(self.od_labels[sourcetype][id_image])):
-                vector.append(from_yolo_toxy(
-                    [float(i) for i in self.od_labels[sourcetype][id_image][j]],
-                    imgsize))
-
-            plot_single_image_odlabel(self.images_data[sourcetype][id_image], vector, figsize=figsize)
-
-        else:
-
-            plot_single_image(self.images_data[sourcetype], id_image, figsize)
-
-    def _read_single_image(self, id_image=0, scale_factor=None, size=None, pattern="\\", pos_id=-2):
-
-        kwargs = {'scale_factor': scale_factor,
-                  'size': size}
-
-        if type(id_image) == str:
-            id_image = [i for i in range(len(self.jpg_path_files))
-                        if id_image in self.jpg_path_files[i]]
-
-        id_image = self.jpg_path_files[id_image].split(pattern)[pos_id:]
-        id_image_folder = '_'.join(id_image)
-        selectid = 0
-        if len(id_image) > 0:
-            selectid = -1
-
-        path_img_id = [i for i in self.jpg_path_files if id_image[selectid] in i]
-
-        single_image = read_image_as_numpy_array(path_img_id[0], **kwargs)
-
-        return single_image, id_image_folder
-
-    def _organice_data(self, idx, kwargs):
-        img_list = []
-        bb_list = []
-
-        img_info = self.single_image(idx, **kwargs)
-        for m in range(len(img_info[1])):
-            img_list.append(img_info[0][0])
-            bb_list.append(img_info[1][m])
-        return [img_list, bb_list]
-
-    def multiple_images(self,
-                        n_samples=None,
-                        scale_factor=None,
-                        size=None,
-                        shuffle=True,
-                        seed=123,
-                        start=0,
-                        read_images=True):
-
-        kwargs = {'scale_factor': scale_factor,
-                  'size': size}
-        if n_samples is None:
-            n_samples = len(self._path_files)
-
-        list_idx = list(range(len(self._path_files)))
-        if shuffle:
-            random.seed(seed)
-            random.shuffle(list_idx)
-
-        img_list = []
-        bb_list = []
-        idx_list = []
-
-        for i in tqdm(range(start, n_samples)):
-
-            img_info = self.single_image(list_idx[i], read_images=read_images, **kwargs)
-            for m in range(len(img_info[1])):
-                img_list.append(img_info[0][0])
-                bb_list.append(img_info[1][m])
-            idx_list.append(list_idx[i])
-
-        return img_list, bb_list, idx_list
-
-    def read_image_data(self, id_images=None, scale_factor=None, size=None, pattern="\\", pos_id=-2):
-
-        kwargs = {'scale_factor': scale_factor, 'size': size, 'pattern': pattern,
-                  'pos_id': pos_id}
-
-        images_list = []
-        file_names = []
-        for i in tqdm(range(len(id_images))):
-            imgdata = self._read_single_image(i, **kwargs)
-            images_list.append(imgdata[0])
-            file_names.append(imgdata[1])
-
-        return images_list, file_names
-
-    def to_jpg(self, output_path, data_type=None, size=None, verbose=False) -> None:
-
-        if data_type is not None:
-            data_type = [data_type] if type(data_type) != list else data_type
-        else:
-            data_type = self._augmented_data.keys()
-
-        ## export labels if there are any
-        if self._labels['raw'] is not None:
-            if not os.path.isdir(os.path.join(output_path,'images')):
-                os.mkdir(os.path.join(output_path,'images'))
-
-            if not os.path.isdir(os.path.join(output_path,'labels')):
-                os.mkdir(os.path.join(output_path,'labels'))
-
-        for datatype in data_type:
-            for idimage in range(len(self._augmented_data[datatype]['imgs'])):
-                fn = self._augmented_data[datatype]['names'][idimage] + '.jpg'
-                fn_path = os.path.join(output_path, fn)
-
-                if self._labels['raw'] is not None:
-                    if self._labels[datatype] is not None:
-
-                        save_yololabels(self._labels[datatype][idimage],
-                                    self._augmented_data[datatype]['names'][idimage] + '.txt' ,
-                                    outputdir= os.path.join(output_path,'labels'))
-                        if self._labels[datatype][idimage] is not None:
-                            from_array_2_jpg(self._augmented_data[datatype]['imgs'][idimage],
-                                    os.path.join(output_path,'images', fn),
-                                    size=size,
-                                    verbose=verbose)
-                else:
-                    from_array_2_jpg(self._augmented_data[datatype]['imgs'][idimage],
-                                 fn_path,
-                                 size=size,
-                                 verbose=verbose)
-                
-    def get_image(self, id):
-        pass
-    
-    def __init__(self,
-                 source,
-                 id_image=None,
-                 image_size=None,
-                 scale_percentage=None,
-                 pattern='jpg',
-                 label_type=None,
-                 sep_pattern="\\",
-                 path_to_images=False):
-        """
-
-        :param source:
-        :param id_image:
-        :param image_size:
-        :param scale_percentage:
-        :param pattern:
-        :param sep_pattern:
-        :param path_to_images
-        """
-
-        self._path_files = None
-        self._input_path = source
-        if path_to_images:
-            self._path_files = source
-            self.jpg_path_files = self._path_files
-            self._input_path = "/".join(list(np.array(source[0].split('[/\\]'))[:-1]))
-
-        else:
-            if pattern is not None:
-
-                self._path_files = list_files(source, pattern=pattern)
-                if label_type == "xml":
-                    self.jpg_path_files = [i[:-4] + ".jpg" for i in self._path_files]
-
-                if pattern == 'jpg':
-                    self.jpg_path_files = self._path_files
-
-        # TODO: separate images_data and id_image
-        if id_image is not None:
-            if id_image == "all":
-                id_image = list(range(len(self.jpg_path_files)))
-            if type(id_image) != list:
-                id_image = [id_image]
-            self.jpg_path_files = [self.jpg_path_files[i] for i in id_image]
-            print(self.jpg_path_files)
-        else:
-            id_image = list(range(len(self.jpg_path_files)))
-
-        images_data, self.id_image = self.read_image_data(id_images=id_image,
-                                                               scale_factor=scale_percentage,
-                                                               size=image_size,
-                                                               pattern=sep_pattern, pos_id=-2)
-
-        fn_originals = [os.path.basename(self.jpg_path_files[i])
-                        for i in range(len(self.jpg_path_files))]
-
-        self._augmented_data = {'raw': {'imgs': images_data,
-                                        'names': fn_originals}}
-
-        #try:
-        alllabels = LabelData(self).labels
-        nnone = len([lab for lab in alllabels if lab is None])
-
-        if nnone ==  len(images_data):
-            alllabels = None
-
-        self._labels = {'raw': alllabels}
-        #except:
-        #    self._labels = None
 

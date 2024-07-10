@@ -56,23 +56,42 @@ class TargetDataset():
     _df : pd.DataFrame
         The loaded dataset as a DataFrame.
     """
+    @property
+    def df(self):
+        if self._df is None:
+            self._df = self.read_path(path = self.file_path)
+            self._nnpos = self._non_nan_positions(self._df[self.target_label].values)
+                        
+        return self._df.loc[self._nnpos]
     
-    def __init__(self, path:str=None, target_key:str = None, id_key:str = None, table_type = 'dataframe') -> None:
-
-        self.file_path = path
-        if path is not None:
-            assert os.path.exists(self.file_path), f"The path {path} does not exist"
+    
+    def __init__(self, dataframe: pd.DataFrame = None, path:str=None, target_key:str = None, id_key:str = None, table_type = 'dataframe') -> None:
 
         self.target_label = target_key
         self.ids_label = id_key
+        self._df = None
+        self._reader_fun = None
+        self._nnpos = None
+        self.file_path = path
+        self._reader_fun = pd.read_csv
         
         #self.target_transformation = parser.scaler_transformation
         if table_type == "dataframe":
-            self._df = pd.read_csv(self.file_path) 
-            self._nnpos = self._non_nan_positions(self._df[self.target_label].values)
+
+            if path is not None:
+                self._df = self.read_path(path = self.file_path) 
+            elif dataframe is not None:
+                self._df = dataframe
             
        #if tabletype == "dict":
 
+    def read_path(self, path, reader = None):
+        assert os.path.exists(path), f"Unable to use the specified path: {path}"
+        if reader is None:
+            reader = pd.read_csv
+        
+        return reader(path)        
+    
     @staticmethod
     def _non_nan_positions(target):
         """
@@ -97,7 +116,7 @@ class TargetDataset():
             A list of identifiers corresponding to non-NaN target values.
         """
 
-        if self.ids_label in self._df.columns:
+        if self.ids_label in self.df.columns:
             ids = list(self._df[self.ids_label].values[self._nnpos])
         else:
             ids = list(range(self._nnpos))
@@ -125,6 +144,7 @@ class TargetDataset():
     @property
     def target_data(self):
         return self.get_target()
+    
     
 class ClassificationTarget(TargetDataset, SplitIdsClassification):
     

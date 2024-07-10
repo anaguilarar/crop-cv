@@ -42,26 +42,33 @@ def scale_255(data):
     return ((data - data.min()) * (1 / (data.max() - data.min()) * 255)).astype('uint8')
 
 
-def estimate_pol_buffer(xcoords: List[float], ycoords: List[float], newarea: float) -> float:
+def estimate_pol_buffer(xcoords: List[float], ycoords: List[float], newarea: float, getmax = True) -> float:
     """
     Estimate the buffer required to achieve a desired area around a polygon.
 
-    Args:
-        xcoords (list): List containing x min and x max of the polygon vertices.
-        ycoords (list): List containing y min and y max of the polygon vertices.
-        newarea (float): Desired area for the buffer around the polygon.
+    Parameters
+    ----------
+    xcoords : List[float]
+        List containing the x-coordinate of the minimum and maximum vertices of the polygon.
+    ycoords : List[float]
+        List containing the y-coordinate of the minimum and maximum vertices of the polygon.
+    newarea : float
+        Desired area for the buffer around the polygon.
 
-    Returns:
-        float: Buffer distance required to achieve the desired area.
+    Returns
+    -------
+    float
+        Buffer distance required to achieve the desired area.
     """
-    
     width = xcoords[1] - xcoords[0]
     height = ycoords[1] - ycoords[0]
-    a1 = (width * height)
-    a2 = newarea
-    delta1 = (-(width + height) + np.sqrt(((width + height)*(width + height)) - 4 * (a1-a2)))/2
-    delta2 = (-(width + height) - np.sqrt(((width + height)*(width + height)) - 4 * (a1-a2)))/2
-    delta = delta1 if delta1> delta2 else delta2
+    original_area = width * height
+    desired_area = newarea
+    discriminant = np.sqrt((width + height) ** 2 - 4 * (original_area - desired_area))
+    
+    delta1 = (-(width + height) + discriminant) / 2
+    delta2 = (-(width + height) - discriminant) / 2
+    delta = delta1 if delta1 > delta2 else delta2
 
     return delta
 

@@ -370,9 +370,15 @@ class IndividualUAVData(object):
         self.rgb_path = rgb_input
         self.ms_input = ms_input
         self.threed_input = threed_input
-        self.spatial_boundaries = spatial_boundaries.copy()
+        if isinstance(spatial_boundaries, gpd.GeoDataFrame):
+            self.spatial_boundaries = spatial_boundaries.copy()
+        else:
+            self.spatial_boundaries = spatial_boundaries
         ### read data with buffer
-        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
+        if buffer != 0:
+            self._boundaries_buffer = self.spatial_boundaries.buffer(buffer, join_style=2)
+        else:
+            self._boundaries_buffer = self.spatial_boundaries
     
     @property
     def rgb_data(self):
@@ -489,7 +495,7 @@ class IndividualUAVData(object):
         
         rgb_data = _set_dronedata(
             self.rgb_path, 
-            bounds = self._boundaries_buffer.copy(), 
+            bounds = self._boundaries_buffer, 
             multiband_image=True, 
             bands = self.rgb_bands, **kwargs)
         self.uav_sources.update({'rgb':rgb_data})
@@ -510,7 +516,7 @@ class IndividualUAVData(object):
 
 
         ms_data = _set_dronedata(self.ms_input, 
-                    bounds = self._boundaries_buffer.copy(),
+                    bounds = self._boundaries_buffer,
                     multiband_image=False, bands = self.ms_bands, **kwargs)
 
         self.uav_sources.update({'ms':ms_data})

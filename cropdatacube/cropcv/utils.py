@@ -12,56 +12,6 @@ def perform(fun, *args):
 def perform_kwargs(fun, **kwargs):
     return fun(**kwargs)
 
-def binary_classification_transform(scores: np.ndarray, 
-                                    threshold: float, 
-                                    comparing_with_zero: bool = True, 
-                                    min_threshold: Optional[float] = None) -> np.ndarray:
-    """
-    Transforms continuous score data into binary categories based on a given threshold. 
-    Scores equal to zero can be handled specifically, and an optional minimum threshold can be defined for further classification refinement.
-
-    Parameters
-    ----------
-    scores : np.ndarray
-        Array of score values.
-    threshold : float
-        The threshold above which scores are classified as 1.
-    comparing_with_zero : bool, optional
-        If True, scores exactly equal to zero are treated separately, default is True.
-    min_threshold : Optional[float], optional
-        An optional lower bound to classify scores. Scores below this threshold are set to nan unless they are zero, by default None.
-
-    Returns
-    -------
-    np.ndarray
-        A binary array where scores above the `threshold` are 1, and all others are 0. If `min_threshold` is set,
-        scores below this value are set to nan. If `comparing_with_zero` is True, scores exactly equal to zero are handled separately.
-
-    Notes
-    -----
-    The function uses numpy for logical operations to classify the scores efficiently.
-    """
-    scorecate = np.zeros(scores.shape)
-    scorecate[scores>=threshold] = 1
-    if comparing_with_zero:
-        cerovals = scores == 0.0
-        scorevals = scores >= threshold
-        
-        scorecate = np.zeros(scores.shape)
-        scorecate[scorevals] = 1
-        scorecate[np.logical_not(np.logical_or(cerovals,scorevals))] = np.nan
-    
-    if min_threshold is not None:
-        cerovals = scores <= min_threshold
-        scorevals = scores >= threshold
-        
-        scorecate = np.zeros(scores.shape)
-        scorecate[scorevals] = 1
-        scorecate[np.logical_not(np.logical_or(cerovals,scorevals))] = np.nan
-    
-    return scorecate
-
-
 
 def summarise_trasstring(values):
     

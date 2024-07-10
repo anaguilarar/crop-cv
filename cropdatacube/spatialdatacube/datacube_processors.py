@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 import geopandas as gpd
+import random
 
 import numpy as np
 import os
@@ -935,6 +936,231 @@ class MultiDDataTransformer(DataCubeProcessing):
         
         return data
 
+ 
+class MultiChannelTransformer(DataCubeProcessing):
+    """
+    Processes imagery data with multiple channels by applying transformations,
+    scaling, and other data manipulations.
+
+    Attributes
+    ----------
+    channels : List[str]
+        List of channel names from the data cube.
+    transformations : Optional[Any]
+        Transformation options for processing the image data.
+    scaler : Dict
+        Scaling parameters for image data normalization or standardization.
+    time_points : Optional[List[int]]
+        Specific time points to slice from the data cube.
+    
+    Methods
+    -------
+    get_transformed_image
+        Applies specified transformations and returns the processed image data.
+    """
+    def __init__(self, xrdata: Optional[xarray.Dataset] = None, array_order: str = 'CHW', 
+                 transformation_options: Optional[str] = None, 
+                 transformer = None,
+                 channels: Optional[List[str]] = None,
+                 scaler: Optional[Dict[str, float]] = None) -> None:
         
+        """
+        Initializes the DepthImageryTranformation class with data cube and transformation details.
+
+        Parameters
+        ----------
+        xrdata : Dataset, optional
+            The xarray Dataset containing the data cube.
+        array_order : str, optional
+            The order of array dimensions.
+        transformation_options : Any, optional
+            Options for transforming the image data.
+        channels : List[str], optional
+            Specific channels to use from the data cube.
+        time_points : List[int], optional
+            Time points to extract from the data cube.
+        scaler : Dict[str, Any], optional
+            Parameters for data scaling.
+        """
+        
+        self.channels = list(xrdata.keys()) if channels is None else channels
+        self.transformations = transformation_options
+        self.transformer = transformer
+        self.scaler = scaler
+        
+        super().__init__(xrdata, array_order)
+    
+    def get_transformed_image(self, 
+                              min_area: float = None, 
+                              image_reduction: float = None, 
+                              augmentations: List[str] = None,
+                              rgb_for_color_space: List[str] = ['red', 'green', 'blue'],
+                              rgb_for_illumination: List[str] = ['red', 'green', 'blue'],
+                              ms_channel_names: List[str] = ['blue','green','red','edge','nir'],
+                              standardize_spectral_values: bool = False,
+                              new_size: Optional[int] = None, 
+                              scale_rgb: bool = True,
+                              max_number_transformations: int = 4,
+                              report_times: bool = False,
+                              scale_method: str = 'standardization') -> np.ndarray:
+        """
+        Processes the imagery data by applying transformations and returning the modified image data.
+
+        Parameters
+        ----------
+        min_area : float, optional
+            Minimum area for data clipping.
+        image_reduction : float, optional
+            Reduction factor for clipping based on image area.
+        augmentation : str, optional
+            Name of the augmentation to apply.
+        rgb_for_color_space : List[str], optional
+            Channels to use for color space calculations.
+        rgb_for_illumination : List[str], optional
+            Channels to use for illumination adjustments.
+        ms_channel_names : List[str], optional
+            Multi-spectral band names.
+        new_size : int, optional
+            New size for resizing the image data.
+        scale_rgb : bool, optional
+            Flag to scale RGB channels.
+
+        Returns
+        -------
+        np.ndarray
+            The processed multi-channel image data.
+        """
+        
+        # clip datacube
+        if min_area or image_reduction:
+            self.clip_datacube(min_area=min_area, image_reduction = image_reduction, report_times=report_times)
+        
+        # create new features in t given case that there are channels that are not in the datacube
+        self.create_new_features(rgb_for_color_space = rgb_for_color_space)
+        
+        # scale spectral data
+        if standardize_spectral_values:
+            self.scale_based_on_spectral_pattern(ms_channel_names, update_data=True)
+
+        mlcdata = get_data_from_dict(from_xarray_to_dict(self.xrdata), onlythesechannels = self.channels)
+        
+        ## data augmentation
+        self.transformer._transformparameters = {}
+        ntrchain = random.choice(range(max_number_transformations))+1
+        augmentations = self.transformer._select_random_transforms(n_chains=ntrchain
+                                                                     ) if augmentations is None else augmentations
+
+        for aug_name in augmentations:
+            mlcdata = self.apply_image_augmentation(mlcdata, aug_name, rgb_channels = rgb_for_illumination)
+        
+        mlcdata[np.isnan(mlcdata)] = 0        
+
+        if self.scaler is not None:
+
+            mlcdata = self.scale_mlt_data(mlcdata, scale_method= scale_method, scaler=self.scaler, channels = self.channels)
+        
+        return mlcdata
+    
+    @staticmethod
+    def scale_mlt_data(data: np.ndarray, scaler,channels, scale_method = 'standardization') -> np.ndarray:
+        """
+        Scales the multi-dimensional data cube using the provided scaler configuration.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to be scaled.
+        scale_method: str, 
+            data scale method
+        Returns
+        -------
+        np.ndarray
+            The scaled data cube.
+        """
+        data = transform_listarrays(data, var_channels = channels, scaler = scaler, 
+                                    scale_type =scale_method)
+        
+        data = np.array([data[chan] for chan in list(data.keys())])
+        if True in np.isnan(data):
+            data = fill_na_values(data, n_neighbors = 7)
+        return data    
+    
+    def create_new_features(self, rgb_for_color_space: List[str] = ['red', 'green', 'blue']) -> None:
+        """
+        Creates new features such as vegetation indices and color spaces based on available data channels.
+
+        Parameters
+        ----------
+        rgb_for_color_space : List[str], optional
+            RGB channel names used for color space calculations.
+
+        Notes
+        -----
+        Adds calculated features directly to the dataset, updating it in-place.
+        """
+        
+        # calculate vegetation indices 
+        vilist = [i for i in self._available_vi if i in self.channels]
+        if len(vilist)>0:
+            self.calculate_vegetation_indices(vilist, overwrite = True)
+
+        # calculate colors
+        featcolor = self._list_color_features
+        colorlist = [i for i in featcolor if i in self.channels]
+        if len(colorlist)>0:
+            colospaces = np.unique([i for j in colorlist for i in self._available_color_spaces.keys() if j in self._available_color_spaces[i]])
+            for i in colospaces:
+                self.calculate_color_space(color_space = i, 
+                                                    rgbchannels =rgb_for_color_space, 
+                                                    update_data=True)
+    
 
     
+    def apply_image_augmentation(self, image: np.ndarray, transformation: str,
+                                rgb_channels: List[str], tr_configuration: Optional[Dict] = None, 
+                                trverbose: bool = False) -> np.ndarray:
+        """
+        Applies specified image augmentation to the provided multi-dimensional image data.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            The image data to augment.
+        transformation : str
+            The type of transformation to apply.
+        channel_names : List[str]
+            Names of the channels in the image data.
+        rgb_channels : List[str]
+            Specific channels to apply RGB-based transformations.
+        tr_configuration : dict, optional
+            Configuration for transformations.
+        trverbose : bool, optional
+            If true, enables verbose output during transformation.
+        transformoptions : List[str], optional
+            Available transformation options.
+
+        Returns
+        -------
+        np.ndarray
+            The augmented image data.
+        """
+            
+        data = image.copy()
+        if transformation in ['illumination','hsv','clahe']:
+        ## chcking if rgb is in the array
+            imgrgb = getting_only_rgb_channels(image,self.channels, rgb_channels)
+
+            if imgrgb.shape[0] == 3:
+                if tr_configuration is not None:
+                    data = self.transformer(imgrgb , transformation, **tr_configuration)
+                else:          
+                    data = self.transformer(imgrgb , transformation)
+                data = insert_rgb_to_matrix(image, data, self.channels,rgb_channels)
+            
+        else:
+            if tr_configuration is not None:
+                data = self.transformer(image , transformation, **tr_configuration)
+            else:          
+                data = self.transformer(image , transformation)
+        
+        return data
