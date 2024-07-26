@@ -102,21 +102,28 @@ class DETR_Losses(nn.Module):
         #self.register_buffer('empty_weight', empty_weight)
     
     def forward(self, outputs, targets):
-        
-        indices = self.matcher(outputs, targets)
+        notnan = torch.tensor([~torch.isnan(i).any() for i in outputs["pred_logits"] ])
+        if ~notnan.all():
+            outputs["pred_logits"] = outputs["pred_logits"][notnan]
+            outputs["pred_boxes"] = outputs["pred_boxes"][notnan]
+            print(notnan)
+            targets = [targets[i] for i, boolval in enumerate(notnan) if boolval]
+        if len(targets)>0:
+            indices = self.matcher(outputs, targets)
 
-        num_boxes = sum(len(t["labels"]) for t in targets)
-        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
-        #num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
-        num_boxes = torch.clamp(num_boxes / 1, min=1).item()
-        
-        lossbox = loss_boxes(targets, outputs,  indices, num_boxes)
+            num_boxes = sum(len(t["labels"]) for t in targets)
+            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+            #num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
+            num_boxes = torch.clamp(num_boxes / 1, min=1).item()
+            
+            lossbox = loss_boxes(targets, outputs,  indices, num_boxes)
 
-        losslabel = loss_labels( targets, outputs,indices, self.num_classes, self.empty_weight)
-        
-        losses = {}
-        losses.update(lossbox)
-        losses.update(losslabel)
-        
+            losslabel = loss_labels( targets, outputs,indices, self.num_classes, self.empty_weight)
+            
+            losses = {}
+            losses.update(lossbox)
+            losses.update(losslabel)
+        else:
+            losses = None
         return losses
     

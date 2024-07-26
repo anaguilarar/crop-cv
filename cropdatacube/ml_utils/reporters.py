@@ -109,7 +109,8 @@ class ReporterBase():
                 # get only numerical data
                 flatdict = [z[j] for z in data_groups[k] for j in z.keys() if isinstance(z[j],(float, int))]
                 # reshape the list
-                reordered = np.array(flatdict).reshape(len(flatdict)//3,3)
+                lenregisters = len(data_groups[k][0])
+                reordered = np.array(flatdict).reshape(len(flatdict)//lenregisters,lenregisters)
                 # summarise the data
                 summarized = fnc(reordered, axis = 0)
                 # from list to dict and save

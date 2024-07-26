@@ -110,14 +110,7 @@ def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
     y[:, 3] = (x[:, 3] - x[:, 1]) / h  # height
     return y
 
-def xyxy_to_xywh(bbs):
-    # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] where xy1=top-left, xy2=bottom-right
-    y = [0]*len(bbs)
-    y[0] = (bbs[0] + bbs[2]) / 2  # x center
-    y[1] = (bbs[1] + bbs[3]) / 2  # y center
-    y[2] = abs(bbs[2] - bbs[0])  # width
-    y[3] = abs(bbs[3] - bbs[1])  # height
-    return y
+
 
 def xyxy2xywh(x):
     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] where xy1=top-left, xy2=bottom-right
@@ -138,25 +131,7 @@ def xywh2xyxy(x):
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
     return y
 
-def from_yolo_toxy(yolo_style, size):
-    dh, dw = size
-    _, x, y, w, h = yolo_style
 
-    l = int((x - w / 2) * dw)
-    r = int((x + w / 2) * dw)
-    t = int((y - h / 2) * dh)
-    b = int((y + h / 2) * dh)
-
-    if l < 0:
-        l = 0
-    if r > dw - 1:
-        r = dw - 1
-    if t < 0:
-        t = 0
-    if b > dh - 1:
-        b = dh - 1
-
-    return (l, r, t, b)
 
 def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
     # Rescale boxes (xyxy) from img1_shape to img0_shape

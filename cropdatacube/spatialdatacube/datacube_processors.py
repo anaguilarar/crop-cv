@@ -1043,7 +1043,7 @@ class MultiChannelTransformer(DataCubeProcessing):
             self.scale_based_on_spectral_pattern(ms_channel_names, update_data=True)
 
         mlcdata = get_data_from_dict(from_xarray_to_dict(self.xrdata), onlythesechannels = self.channels)
-        
+        mlcdata = mlcdata.astype(float)
         ## data augmentation
         self.transformer._transformparameters = {}
         ntrchain = random.choice(range(max_number_transformations))+1
@@ -1052,13 +1052,16 @@ class MultiChannelTransformer(DataCubeProcessing):
 
         for aug_name in augmentations:
             mlcdata = self.apply_image_augmentation(mlcdata, aug_name, rgb_channels = rgb_for_illumination)
-        
-        mlcdata[np.isnan(mlcdata)] = 0        
+            
+        #if True in np.isnan(mlcdata):
+        #    mlcdata = fill_na_values(mlcdata, n_neighbors = 7)
+        #mlcdata[np.isnan(mlcdata)] = 0        
 
         if self.scaler is not None:
 
             mlcdata = self.scale_mlt_data(mlcdata, scale_method= scale_method, scaler=self.scaler, channels = self.channels)
         
+        mlcdata = mlcdata.astype(float)
         return mlcdata
     
     @staticmethod
@@ -1081,8 +1084,7 @@ class MultiChannelTransformer(DataCubeProcessing):
                                     scale_type =scale_method)
         
         data = np.array([data[chan] for chan in list(data.keys())])
-        if True in np.isnan(data):
-            data = fill_na_values(data, n_neighbors = 7)
+        #
         return data    
     
     def create_new_features(self, rgb_for_color_space: List[str] = ['red', 'green', 'blue']) -> None:

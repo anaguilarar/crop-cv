@@ -57,6 +57,8 @@ class HungarianMatcher(nn.Module):
             For each batch element, it holds:
                 len(index_i) = len(index_j) = min(num_queries, num_target_boxes)
         """
+        
+        
         bs, num_queries = outputs["pred_logits"].shape[:2]
 
         # We flatten to compute the cost matrices in a batch
@@ -66,7 +68,10 @@ class HungarianMatcher(nn.Module):
         # Also concat the target labels and boxes
         tgt_ids = torch.cat([v["labels"] for v in targets])
         tgt_bbox = torch.cat([v["boxes"] for v in targets])
-
+        #nanpos = torch.isnan(out_prob)[:,0]
+        #if nanpos.any():
+        #    out_bbox = out_bbox[~nanpos]
+        #    out_prob = out_prob[~nanpos]
         # Ensure the tensors are in float32
         out_prob = out_prob.float()
         out_bbox = out_bbox.float()

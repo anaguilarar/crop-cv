@@ -293,9 +293,7 @@ class DLTrainerModel(DLBaseEngine):
             #losses.requires_grad=True
         
         losses =  self.loss_fcn(pred,y)
-        if self._weight_dict:
-            losses = sum(v * self._weight_dict[k] for k, v in losses.items() if k in self._weight_dict)
-            
+
         #if self._multiclass:
         #    losses =losses.detach()
 
@@ -382,7 +380,8 @@ class DLTrainerModel(DLBaseEngine):
         
         x, y = next(self._data_loader_eval_iter)
         if isinstance(y[0], tuple):
-            x = list(image.to(self.device) for image in x)
+            #x = list(image.to(self.device) for image in x)
+            x = x.to(self.device)
             y = [{k: v.to(self.device) for k, v in t.items()} for t in y]
         else:
             y = y.to(self.device)
@@ -392,6 +391,7 @@ class DLTrainerModel(DLBaseEngine):
         with torch.no_grad():
             output = self.model(x)
             losses = self.compute_loss(output, y)
+        
             
         #write losses losses
         self._save_loss(losses, evaluation =True)
@@ -407,15 +407,16 @@ class DLTrainerModel(DLBaseEngine):
         max_iter = len(self._tr_data_loader)
         pbar = tqdm(range(max_iter), leave=True, colour='blue', desc="Training")
         for _ in pbar:
-            try:
-                self.run_iter()
-                toshow = {}
-                for k in self._iter_tr_reporter.report.keys():
-                    toshow[k] = self._iter_tr_reporter.report[k][-1]
-                
-                pbar.set_postfix(OrderedDict(toshow))
-            except Exception:
-                warnings.warn("Exception during training:")
+            #try:
+                endprocess = self.run_iter()
+                if endprocess:
+                    toshow = {}
+                    for k in self._iter_tr_reporter.report.keys():
+                        toshow[k] = self._iter_tr_reporter.report[k][-1]
+                    
+                    pbar.set_postfix(OrderedDict(toshow))
+            #except Exception:
+            #    warnings.warn("Exception during training:")
                 
     def run_iter(self):
         """
@@ -429,13 +430,38 @@ class DLTrainerModel(DLBaseEngine):
         x, y = next(self._data_loader_iter)
         
         if isinstance(y, tuple):
-            x = torch.cat([torch.unsqueeze(image, dim=0).to(self.device) for image in x])
+            #x = torch.cat([torch.unsqueeze(image, dim=0).to(self.device) for image in x])
             #torch.cat([torch.unsqueeze(n, dim=0) for n in data[0]])
+            
+            boolval = [len(val['boxes'])> 1 for i, val in enumerate(y)]
+
+            x.filter_batches(np.squeeze(np.argwhere(boolval)))
+            y = [y[i] for i in np.squeeze(np.argwhere(boolval))]
+            
+            boolval = [len(val['labels'])> 1 for i, val in enumerate(y)]
+            x.filter_batches(np.squeeze(np.argwhere(boolval)))
+            y = [y[i] for i in np.squeeze(np.argwhere(boolval))]
+            #print(f'batch input size: {x.tensors.shape[0]}')
+            x = x.to(self.device)
+            #
+ 
+            
+            #if ~np.array(boolval).all():
+            #    return False
+            
+            
+            #if ~np.array(boolval).all():
+            #    return False
+            
+            if len([v["labels"] for v in y])<1:
+                return False
+            
             y = [{k: v.to(self.device) for k, v in t.items() if isinstance(v, torch.Tensor)} for t in y]
+
+            
         else:
             y = y.to(self.device)
             x = x.to(self.device)
-            
         
         
         if self.loss_fcn is not None:
@@ -446,28 +472,33 @@ class DLTrainerModel(DLBaseEngine):
         else:
             with torch.cuda.amp.autocast():
                 loss_output = self.model(x, y)
-        
-        if isinstance(loss_output, dict):
-            losses = sum(loss for loss in loss_output.values())
-            loss_output.update({'loss': losses})
-        else:
-            losses = loss_output
-            
-        #if self._multiclass:
-        #    losses.backward()
-        #    self.optimizer.step()
-        #else:
-        self.grad_scaler.scale(losses).backward()    
-        self.grad_scaler.step(self.optimizer)
-        self.grad_scaler.update()
-        self.optimizer.zero_grad()
-            
-        #write losses losses
-        self._save_loss(loss_output)
-        self._write_iter_metrics()
+        if loss_output is not None:      
+            if isinstance(loss_output, dict):
+                if self._weight_dict:
+                    loss_output = {k: v * self._weight_dict[k] for k, v in loss_output.items() if k in self._weight_dict}
+                
+                losses = sum(loss for loss in loss_output.values())
+                loss_output.update({'loss': losses})
+            else:
+                losses = loss_output
+                
+            #if self._multiclass:
+            #    losses.backward()
+            #    self.optimizer.step()
+            #else:
+            self.grad_scaler.scale(losses).backward()    
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+            self.optimizer.zero_grad()
+                
+            #write losses losses
+            self._save_loss(loss_output)
+            self._write_iter_metrics()
 
-        self.lr_scheduler.step()
+            self.lr_scheduler.step()
         self.iter += 1
+        
+        return True
         
     def _save_loss(self, losses, evaluation=False):
         """

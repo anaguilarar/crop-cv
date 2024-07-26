@@ -24,7 +24,7 @@ from typing import Tuple, Optional, Union
 from sklearn.impute import KNNImputer
 
 
-def fill_na_values(mltimage: np.ndarray, n_neighbors: int = 7) -> np.ndarray:
+def fill_na_values(mltimage: np.ndarray, n_neighbors: int = 7, ndims = 3) -> np.ndarray:
     """
     Fill NaN values in a multi-dimensional image using k-Nearest Neighbors (k-NN) imputation.
 
@@ -42,12 +42,17 @@ def fill_na_values(mltimage: np.ndarray, n_neighbors: int = 7) -> np.ndarray:
         New array with NaN values filled using k-NN imputation.
     """
     impmodel = KNNImputer(n_neighbors=n_neighbors)
-    newimg = mltimage.copy()
-    for c in range(mltimage.shape[0]):
-        for t in range(mltimage.shape[1]):
-            if np.isnan(mltimage[c, t]).any():
-                newimg[c,t] = impmodel.fit_transform(mltimage[c,t])
-
+    newimg = np.zeros(mltimage.shape).astype(float)
+    
+    if len(mltimage.shape) == 3:
+        for c in range(mltimage.shape[0]):
+            if np.isnan(mltimage[c]).any():
+                newimg[c] = impmodel.fit_transform(mltimage[c])
+    else:
+        for c in range(mltimage.shape[0]):
+            for t in range(mltimage.shape[1]):
+                if np.isnan(mltimage[c, t]).any():
+                    newimg[c,t] = impmodel.fit_transform(mltimage[c,t])      
     return newimg   
 
 

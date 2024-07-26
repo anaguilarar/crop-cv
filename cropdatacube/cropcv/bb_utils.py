@@ -9,6 +9,35 @@ import copy
 import inspect
 from typing import List, Dict
 
+def xyxy_to_xywh(bbs):
+    # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] where xy1=top-left, xy2=bottom-right
+    y = [0]*len(bbs)
+    y[0] = (bbs[0] + bbs[2]) / 2  # x center
+    y[1] = (bbs[1] + bbs[3]) / 2  # y center
+    y[2] = abs(bbs[2] - bbs[0])  # width
+    y[3] = abs(bbs[3] - bbs[1])  # height
+    return y
+
+def from_yolo_toxy(yolo_style, size):
+    dh, dw = size
+    _, x, y, w, h = yolo_style
+
+    l = int((x - w / 2) * dw)
+    r = int((x + w / 2) * dw)
+    t = int((y - h / 2) * dh)
+    b = int((y + h / 2) * dh)
+
+    if l < 0:
+        l = 0
+    if r > dw - 1:
+        r = dw - 1
+    if t < 0:
+        t = 0
+    if b > dh - 1:
+        b = dh - 1
+
+    return (l, r, t, b)
+
 def flip_bb(bbs, img_width: int, img_height: int, axis_order: List[int] = [0, 2]) -> np.ndarray:
     """
     Flip bounding boxes along the specified axes.

@@ -18,6 +18,7 @@ from .orthomosaic import OrthomosaicProcessor
 from .gis_functions import merging_overlaped_polygons, from_bbxarray_2polygon
 from .data_processing import resize_3dnparray
 import os
+from typing import List, Tuple
 
 def from_yolo_toxy(yolo_style, size):
     dh, dw = size
@@ -39,6 +40,34 @@ def from_yolo_toxy(yolo_style, size):
 
     return (l, r, t, b)
 
+
+def transform_to_relative_bounding_boxes(bbs: List[Tuple[float, float, float, float]], bbref: Tuple[float, float, float, float]) -> List[Tuple[float, float, float, float]]:
+    """
+    Transform boundary boxes coordinates into a relative coordinate space based on a reference boundary box.
+
+    Parameters
+    ----------
+    bbs : list of tuple of float
+        List of boundary boxes to transform, each defined by (xmin, ymin, xmax, ymax).
+    bbref : tuple of float
+        Reference boundary box defined by (xmin, ymin, xmax, ymax).
+
+    Returns
+    -------
+    list of tuple of float
+        List of transformed boundary boxes in the relative coordinate space.
+    """
+    x1ref, y1ref, x2ref, y2ref = bbref
+    newbb = []
+    for bb in bbs:
+        x1, y1, x2, y2 = bb
+        x1 = x1ref if x1<x1ref else x1
+        y1 = y1ref if y1<y1ref else y1
+        x2 = x2ref if x2>x2ref else x2
+        y2 = y2ref if y2>y2ref else y2
+        newbb.append([x1-x1ref, y1-y1ref, x2-x1ref, y2-y1ref])
+        
+    return newbb
 
 def bb_as_dataframe(xarraydata, yolo_model, device, half =False,
                        conf_thres=0.70, img_size=512, min_size=128,

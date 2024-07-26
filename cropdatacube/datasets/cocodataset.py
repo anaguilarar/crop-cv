@@ -5,6 +5,196 @@ import numpy as np
 import os
 import shutil
 import copy
+from ..cropcv.bb_utils import xyxy_to_xywh
+
+import datetime
+import json
+
+from typing import List, Dict
+
+class CocoLabels():
+    def __init__(self, path) -> None:
+        foldername = os.path.dirname(path)
+        if not os.path.exists(foldername):
+            os.mkdir(foldername)
+            
+        self.path = path
+    
+    def updating_coco_dataset(self,image_info, annotations):
+        return update_cocotrainingdataset(self.path, image_info, annotations)
+    
+    @staticmethod
+    def get_header(image_info, annotations, categorynames):
+        
+        ccoinput = cocodataset_dict_style(image_info, annotations, categorynames= categorynames)
+        
+        return ccoinput
+    
+    @staticmethod
+    def transform_to_annotations(image_fn, image_id, img_height, img_width, bbs = None, masks = None, targets = None):
+        annotations, image_info =  as_coco_dict_dataset(image_fn=image_fn,image_id=image_id,
+                                                      bbs = bbs,labels=  targets, mask = masks, img_height=img_height, img_width=img_width)
+    
+        return image_info, annotations
+
+    def export_dataset(self, cocodataset):
+        with open(self.path , 'w', encoding='utf-8') as f:
+            json.dump(cocodataset, f, indent=4)
+
+def update_cocotrainingdataset(cocodatasetpath, newdata_images, newdata_anns):
+    
+    if os.path.exists(cocodatasetpath):
+        with open(cocodatasetpath, 'r') as fn:
+            previousdata = json.load(fn)
+    else:
+        previousdata = None
+    
+    if previousdata is not None:
+        #newdatac = copy.deepcopy(newdata)
+
+        #newdatac = copy.deepcopy(newdata)
+        previousdatac = copy.deepcopy(previousdata)
+
+        if isinstance(previousdatac["images"], dict):
+            previousdatac["images"] = [previousdatac["images"]]
+        
+        if isinstance(previousdatac["annotations"], dict):
+            previousdatac["annotations"] = [previousdatac["annotations"]]
+            
+        oldimageslist = copy.deepcopy(previousdatac["images"])
+        oldannslist = copy.deepcopy(previousdatac["annotations"])
+        
+        if isinstance(newdata_images, dict):
+            newimageslist = [copy.deepcopy(newdata_images)]
+        else:
+            newimageslist = copy.deepcopy(newdata_images)
+
+        if isinstance(newdata_anns, dict):
+            newannslist = [copy.deepcopy(newdata_anns)]
+        else:
+            newannslist = copy.deepcopy(newdata_anns)
+
+        
+        lastid = oldimageslist[len(oldimageslist)-1]['id']+1
+        lastidanns = oldannslist[len(oldannslist)-1]['id']+1
+        #print(oldannslist[0]['image_id'])
+        for i, newimage in enumerate(newimageslist):
+            previousid = newimage['id']
+            newimage['id']  = lastid
+
+            for j, newann in enumerate(newannslist):
+                if isinstance(newann, list):
+                    for k in range(len(newann)):
+                        if newann[k]['image_id'] == previousid:
+                            newann[k]['image_id'] = lastid
+                            newann[k]['id'] = lastidanns
+                            lastidanns+=1
+                            
+                else:
+
+                    if newann['image_id'] == previousid:
+                        newann['image_id'] = lastid
+                        newann['id'] = lastidanns
+                        lastidanns+=1
+            lastid+=1
+        
+        #if len(newimageslist) == 1:
+        #    newannslist = [newannslist]
+        for newimage in newimageslist:
+            previousdatac["images"].append(newimage)
+        
+        if isinstance(newannslist, list):
+            for newann in newannslist:
+                previousdatac["annotations"].append(newann)
+        else:
+            previousdatac["annotations"].append(newannslist)
+                
+    else:
+        
+        previousdatac = cocodataset_dict_style(newdata_images, newdata_anns)
+        
+        #previousdatac = copy.deepcopy(newdata)
+        
+    return previousdatac
+
+
+def cocodataset_dict_style(imagesdict, 
+                           annotationsdict: Dict,
+                           categorynames: List = None,
+                           exportpath: str = None, 
+                           year: str = "2023"
+                           ):
+    
+    cocodatasetstyle = {"info":{"year":year},
+                    "licenses":[
+                        {"id":1,"url":"https://creativecommons.org/licenses/by/4.0/",
+                         "name":"CC BY 4.0"}]}
+    categorynames = ['0'] if categorynames is None else categorynames
+    
+    categories = [{"id":i,"name":catname,
+               "supercategory":"none"} for i, catname in enumerate(categorynames)]
+    
+    
+    jsondataset = {"info":cocodatasetstyle,
+        "categories":categories,
+        "images":imagesdict,
+        "annotations":annotationsdict}
+    
+    if exportpath:
+        with open(exportpath, 'w', encoding='utf-8') as f:
+            json.dump(jsondataset, f, indent=4)
+        
+    return jsondataset
+
+
+
+def as_coco_dict_dataset(image_id, image_fn, img_height, img_width, bbs = None,mask = None, labels = None):
+        
+        dataanns = []
+        for k in range(len(bbs)):
+            xywh = xyxy_to_xywh(bbs[k])
+            bb = [int(j) for j in bbs[k]]
+            
+            if mask is not None:
+                binarymask = mask[k].copy()
+                mask = decode_coco_masks(binarymask)
+                
+            category = labels[k] if labels is not None else 1
+                
+            dataanns.append(
+            {"id":k,
+            "image_id":image_id,
+            "category_id":category,
+            "bbox":bb, 
+            "area":int(xywh[2]*xywh[3]),
+            "segmentation":mask,
+            "iscrowd":0
+            })
+
+        imgdata = {"id":image_id,
+                   "license":1,
+                   "file_name":image_fn,
+                   "height":int(img_height),
+                   "width":int(img_width),
+                   "date_captured":datetime.datetime.now().strftime("%Y-%m-%d")
+                   }
+
+        return dataanns, imgdata
+
+def decode_coco_masks(mask):
+    import pycocotools.mask as mask_util
+    if len(mask.shape) == 3:
+        msk = mask[:,:,0]
+    else:
+        msk = mask
+    
+    binary_mask_fortran = np.asfortranarray(msk)
+    rle = {'counts': [], 'size': list(binary_mask_fortran.shape)}
+    msk = mask_util.encode(binary_mask_fortran)
+    
+    rle["counts"] = msk["counts"].decode()
+    return rle
+
 
 class CoCoImageryReader(ImageReader):
     

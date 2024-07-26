@@ -249,7 +249,7 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
         ## length width ration
         lwr = length/width
         ## circularity
-        cs = (4*math.pi*area)/(perimeter*length*length)
+        cs = (4*math.pi*area)/(perimeter*perimeter)
         ## roundness 
         # reference: https://doi.org/10.1016/j.anres.2017.12.002
         roundness = (4*math.pi*area)/(perimeter)

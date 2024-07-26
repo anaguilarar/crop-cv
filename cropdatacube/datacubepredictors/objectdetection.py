@@ -1,7 +1,8 @@
-from .utils import xyxy_to_xywh, from_yolo_toxy
+
 from .base_processors import CVDetector_base
 from ..cropcv.detection_plots import draw_frame
 from ..cropcv.image_functions import read_image_as_numpy_array, resize_npimage
+from ..cropcv.bb_utils import xyxy_to_xywh, from_yolo_toxy
 from ..spatialdatacube.orthomosaic import OrthomosaicProcessor
 from ..spatialdatacube.gis_functions import from_polygon_2bbox, from_bbxarray_2polygon, merge_spatial_features
 from ..utils.general import find_postinlist

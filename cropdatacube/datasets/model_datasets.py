@@ -60,9 +60,10 @@ class TargetDataset():
     def df(self):
         if self._df is None:
             self._df = self.read_path(path = self.file_path)
+        if self._nnpos is None:
             self._nnpos = self._non_nan_positions(self._df[self.target_label].values)
                         
-        return self._df.loc[self._nnpos]
+        return self._df.iloc[self._nnpos]
     
     
     def __init__(self, dataframe: pd.DataFrame = None, path:str=None, target_key:str = None, id_key:str = None, table_type = 'dataframe') -> None:
