@@ -781,12 +781,14 @@ class MASKRCNN_dataset(Dataset):
     def __init__(self,
                  cocodataset_reader,
                  augmentation_transform = None,
-                 transform = None) -> None:
+                 transform = None,
+                 binary_class = False) -> None:
 
         self._imgreader = cocodataset_reader 
         self.augmentation_transform = augmentation_transform
         self.transform = transform
-        
+        self.binary_class = binary_class
+        print('binary: ',self.binary_class)
         
     def __len__(self):
         return self._imgreader.imgs_len
@@ -804,20 +806,15 @@ class MASKRCNN_dataset(Dataset):
         if self.augmentation_transform:
             
             imgtr, imgmask = self.augmentation_transform(imgtr,imgmask )
-        
+
         ## bounding boxes
         bboxes = self._imgreader.bounding_boxes(imgmask)
+
         numobjs = len(bboxes)
+
+        ## labels 
+        #labels = self._imgreader.labels
         
-        #bboxes = np.array([bboxes[0]]) if (bboxes.shape[0]>1) else bboxes
-        # BNHW
-        #imgmask = np.expand_dims(imgmask,axis =0) if len(imgmask.shape) == 3 else imgmask
-        #print(imgmask.shape)
-        
-        #
-        #imgtr = np.expand_dims(imgtr,axis =0) if len(imgtr.shape) == 3 else imgmask
-        #print(imgtr.shape)                    
-        ### transform to torch tensor
         if self.transform:
             imgtr, imgmask, bboxes = self.transform(imgtr, imgmask, bboxes)
             imgtr = imgtr.float() 
@@ -825,10 +822,16 @@ class MASKRCNN_dataset(Dataset):
             imgtr = torch.from_numpy(imgtr).float()                
         
         # setting options
-        labels = torch.ones((numobjs,), dtype=torch.int64)
+        if self.binary_class:
+            labels = torch.ones((numobjs,), dtype=torch.int64)
+        
+        else:
+            labels = torch.as_tensor(self._imgreader._labels, dtype=torch.int64)
+            
         masks = torch.as_tensor(np.stack(imgmask), dtype=torch.uint8)
         iscrowd  = torch.zeros((numobjs,), dtype=torch.int64)
         image_id = torch.tensor([index])
+
         bboxes = torch.as_tensor(bboxes, dtype=torch.float32)
         
         area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])

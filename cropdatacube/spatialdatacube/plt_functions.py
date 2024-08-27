@@ -261,7 +261,8 @@ def plot_multichanels(data: np.ndarray,
                        vmax: Optional[float] = None,
                        newlegendticks: Optional[List[str]] = None,
                        fontname: str = "Arial",
-                       invertaxis: bool = True) -> Tuple[plt.Figure, np.ndarray]:
+                       invertaxis: bool = True,
+                       colorbar_orientation = 'vertical') -> Tuple[plt.Figure, np.ndarray]:
     """
     Creates a figure showing one or multiple channels of data with extensive customization options.
 
@@ -310,6 +311,13 @@ def plot_multichanels(data: np.ndarray,
     if chanels_names is None:
         chanels_names = list(range(data.shape[0]))
 
+    def set_ax(ax, data, cmaptxt, vmin, vmax, title, invertaxis):
+        ax.imshow(data, cmap=cmaptxt, vmin=vmin, vmax=vmax)
+        ax.set_title(title, fontdict=fontmainfigure)
+        if invertaxis: ax.invert_xaxis()
+        ax.set_axis_off()
+        return ax
+        
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_columns, figsize = figsize)
     
     count = 0
@@ -332,18 +340,12 @@ def plot_multichanels(data: np.ndarray,
             if count < len(vars):
 
                 if num_rows>1 and num_columns > 1:
-                    ax[j,i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
-                    ax[j,i].set_title(vars[count], fontdict=fontmainfigure)
-                    if invertaxis:
-                        ax[j,i].invert_xaxis()
-                    ax[j,i].set_axis_off()
-                elif num_rows == 1 or num_columns == 1:
-                    ax[i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
-                    ax[i].set_title(vars[count], fontdict=fontmainfigure)
-                    if invertaxis:
-                        ax[i].invert_xaxis()
-                    ax[i].set_axis_off()
-
+                    ax[j,i] = set_ax(ax[j,i], data[count], cmaptxt, vmin, vmax, vars[count], invertaxis)
+                elif (num_rows == 1 and num_columns > 1) or (num_rows > 1 and num_columns == 1):
+                    ax[i] = set_ax(ax[i], data[count], cmaptxt, vmin, vmax, vars[count], invertaxis)
+                else:
+                    ax = set_ax(ax, data[count], cmaptxt, vmin, vmax, vars[count], invertaxis)
+                    
                 count +=1
             else:
                 if num_rows>1:
@@ -356,11 +358,12 @@ def plot_multichanels(data: np.ndarray,
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     
     if colorbar:
-        cbar_ax = fig.add_axes([0.91, 0.15, 0.03, 0.7])
+        cbar_ax = fig.add_axes([0.91, 0.15, 0.03, 0.7]) if colorbar_orientation == 'vertival' else None
+            
         cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                    ax=ax, #orientation='vertical',
-                    cax=cbar_ax,
-                    pad=0.15)
+                    ax=ax, orientation=colorbar_orientation,
+                    cax=cbar_ax, pad=0.15)
+        
         cb.ax.tick_params(labelsize=legtickssize)
         if label_name is not None:
             cb.set_label(label=label_name, fontdict=fontlegtitle)
@@ -371,6 +374,7 @@ def plot_multichanels(data: np.ndarray,
                            ha='left', va='center',fontdict=fontlegtick)
 
     return fig,ax
+
 
 
 

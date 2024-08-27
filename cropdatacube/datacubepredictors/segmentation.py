@@ -285,6 +285,35 @@ class SegmentationDataCube(CustomXarray):
 
 
 class MASKRCNN_Detector(object):
+    """
+    A class for detecting objects using a pre-trained Mask R-CNN model.
+
+    Attributes
+    ----------
+    predictions : list
+        List to store predictions from the model.
+    _frames_colors : list
+        List to store colors for visualizing different instances.
+    input_size : tuple
+        The input size for the images.
+    transform : callable
+        Transform function to apply to the images.
+    model : Any
+        The pre-trained Mask R-CNN model.
+    device : str
+        The device to run the model on (e.g., "cpu", "cuda:0").
+
+    Methods
+    -------
+    read_image(img_path: str) -> np.ndarray:
+        Reads and processes an image from the file path.
+    detect_layers(img_path: str = None, image_data: np.ndarray = None, threshold: float = 0.75, segment_threshold: int = 180) -> None:
+        Detects objects in the image.
+    _original_size() -> None:
+        Resizes masks and bounding boxes to the original image size.
+    _filter_byscore(threshold: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        Filters detections based on confidence score threshold.
+    """
     
     def __init__(self, 
                  model, 
@@ -292,16 +321,21 @@ class MASKRCNN_Detector(object):
                  transform: Optional[Callable] = None,
                  device: Optional[str] = None) -> None:
         
+       
         """
-        Initialize MASKRCNN Detector.
+        Initialize MaskRCNNDetector.
 
-        Args:
-            model (Any): Pre-trained MASKRCNN model for object instance segmentation detection.
-            input_size (Tuple[int, int], optional): Input image size. Defaults to (512, 512).
-            transform (Optional[Callable], optional): Image transformation function. Defaults to None.
-            device (Optional[str], optional): Device to use (e.g., "cpu", "cuda:0"). Defaults to None.
+        Parameters
+        ----------
+        model : Any
+            Pre-trained Mask R-CNN model for object detection.
+        input_size : tuple of int, optional
+            Input image size, by default (512, 512).
+        transform : callable, optional
+            Image transformation function, by default None.
+        device : str, optional
+            Device to use (e.g., "cpu", "cuda:0"), by default None.
         """
-        
         
         self.predictions  = None
         self._frames_colors = None
@@ -311,7 +345,19 @@ class MASKRCNN_Detector(object):
         self.device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     
     def _resize_npimage(self, img):
-        
+        """
+        Resize a NumPy image to the specified input size.
+
+        Parameters
+        ----------
+        img : np.ndarray
+            Input image as a NumPy array.
+
+        Returns
+        -------
+        np.ndarray
+            Resized image.
+        """
         if self.inputsize is not None:
             img = resize_npimage(img, size= self.inputsize)
             self.keep_size = True
@@ -324,8 +370,15 @@ class MASKRCNN_Detector(object):
         """
         Read image from file.
 
-        Args:
-            img_path (str): Path to the image file.
+        Parameters
+        ----------
+        img_path : str
+            Path to the image file.
+
+        Returns
+        -------
+        np.ndarray
+            Image as a NumPy array.
         """
         assert os.path.exists(imgpath) ## path does not exist
         img = read_image_as_numpy_array(imgpath)
@@ -341,12 +394,20 @@ class MASKRCNN_Detector(object):
         """
         Detect instance segmentation objects in the image.
 
-        Args:
-            img_path (str): Path to the image file.
-            image_data (numpy ndarray): Image as numpy array with order H W C as int 8
-            threshold (float, optional): Confidence threshold for detections. Defaults to 0.75.
-            segment_threshold (int, optional): Threshold for segmenting masks. Defaults to 180.
-            keep_size (bool, optional): Whether to keep the original image size. Defaults to False.
+        Parameters
+        ----------
+        img_path : str, optional
+            Path to the image file, by default None.
+        image_data : np.ndarray, optional
+            Image as NumPy array with shape (H, W, C), by default None.
+        threshold : float, optional
+            Confidence threshold for detections, by default 0.75.
+        segment_threshold : int, optional
+            Threshold for segmenting masks, by default 180.
+
+        Returns
+        -------
+        None
         """
         self._pathtoimg = img_path
         ## read image as H W C
@@ -373,15 +434,14 @@ class MASKRCNN_Detector(object):
         self.idimg = id
         self._imgastensor = imgtensor
         
-        pred = self._filter_byscore(threshold)
-        
-        self.msks = pred[0]
+        self.msks, self.bbs, self.labels = self._filter_byscore(threshold)
         
         for i in range(len(self.msks)):
             self.msks[i][self.msks[i]<segment_threshold] = 0
             
-        self.bbs = pred[1]
+
         self._frames_colors = random_colors(len(self.bbs))
+
         
         if self.keep_size:
             self._original_size()
@@ -392,6 +452,10 @@ class MASKRCNN_Detector(object):
     def _original_size(self):
         """
         Resize masks and bounding boxes to original image size.
+
+        Returns
+        -------
+        None
         """
         
         msksc = [0]* len(list(self.msks))
@@ -414,11 +478,15 @@ class MASKRCNN_Detector(object):
         """
         Filter detections based on confidence score threshold.
 
-        Args:
-            threshold (float): Confidence threshold for detections.
+        Parameters
+        ----------
+        threshold : float
+            Confidence threshold for detections.
 
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: Filtered masks and bounding boxes.
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray, np.ndarray]
+            Filtered masks, bounding boxes, and labels.
         """
         pred = self.predictions[0] 
         onlythesepos = np.where(
@@ -426,6 +494,7 @@ class MASKRCNN_Detector(object):
         
         msks = pred['masks'].mul(255).byte().cpu().numpy()[onlythesepos, 0].squeeze()
         bbs = pred['boxes'].cpu().detach().numpy()[onlythesepos]
+        labels = pred['labels'].cpu().detach().numpy()[onlythesepos]
         
         if msks.shape[0] == 0:
             msks = np.zeros(self.inputsize)
@@ -433,7 +502,7 @@ class MASKRCNN_Detector(object):
         if len(msks.shape)==2:
             msks = np.expand_dims(msks,0)
                 
-        return msks, bbs
+        return msks, bbs, labels
         
     
 
@@ -458,7 +527,7 @@ class DLInstanceModel:
     
     
     def __init__(self, weights = None, modeltype = "instance_segmentation",
-                 lr = 0.005, device = None) -> None:
+                 lr = 0.005, device = None, n_categories = 2) -> None:
         
         """
         Initializes the DLInstanceModel instance.
@@ -488,7 +557,7 @@ class DLInstanceModel:
             self.device = device
         
         if modeltype == "instance_segmentation":
-            model = maskrcnn_instance_segmentation_model(2).to(self.device)
+            model = maskrcnn_instance_segmentation_model(n_categories).to(self.device)
             params = [p for p in model.parameters() if p.requires_grad]
             optimizer = torch.optim.SGD(params, lr=lr,
                                         momentum=0.9, weight_decay=0.0005)

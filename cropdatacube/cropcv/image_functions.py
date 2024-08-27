@@ -518,6 +518,7 @@ def randomly_displace(img,maxshift = 0.15, xshift = None, yshift = None):
 
 
 def register_image_shift(data, shift):
+
     tform = SimilarityTransform(translation=(shift[1], shift[0]))
     
     if len(data.shape)>2:

@@ -59,6 +59,7 @@ class DLBaseEngine():
         self.start_iter: int = 0
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.model = model
+        self.lr_scheduler= None
     
     def run_iter(self):
         """
@@ -104,7 +105,8 @@ class DLBaseEngine():
             If the specified path does not exist.
         """
         #assert os.path.exists(path), "The specified path does not exist."
-        
+        if self.lr_scheduler is not None:
+            torch.save(self.lr_scheduler.state_dict(),  path + '_scheduler_params')    
         torch.save(self.model.state_dict(),  path + '_model_params')
         torch.save(self.optimizer.state_dict(), path + '_optimizer_params')
         
@@ -254,7 +256,7 @@ class DLTrainerModel(DLBaseEngine):
         self._data_loader_eval_iter_obj = None
 
         # training params
-        self.lr_scheduler = None
+        #self.lr_scheduler = None
         
         # iteration reporter
     def _set_initial_reporter_params(self):
@@ -327,11 +329,13 @@ class DLTrainerModel(DLBaseEngine):
         pbar = tqdm(range(self.epoch, max_epochs),leave=True, desc="Overall Training Progress")
         bestloss = best_value
         lastbest_epoch = 0
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 100)
+        
         for _ in pbar:
             pbar.set_description("[Epoch %d]" % (self.epoch))
             
             self.train_one_epoch()
-            
+            self.lr_scheduler.step()
             if self._data_loader_eval_iter is not None:
                 self.eval_one_epoch()
 
@@ -423,7 +427,7 @@ class DLTrainerModel(DLBaseEngine):
         Run a single training iteration.
         """
         
-        if self.iter == 0: self._init_lr_scheduler()
+        #if self.iter == 0: self._init_lr_scheduler()
         
         assert self.model.training, "Model was changed to eval mode!"
         
@@ -495,7 +499,7 @@ class DLTrainerModel(DLBaseEngine):
             self._save_loss(loss_output)
             self._write_iter_metrics()
 
-            self.lr_scheduler.step()
+            #self.lr_scheduler.step()
         self.iter += 1
         
         return True

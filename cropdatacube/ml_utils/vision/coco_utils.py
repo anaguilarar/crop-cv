@@ -166,7 +166,9 @@ def convert_to_coco_api(ds):
         bboxes = bboxes.tolist()
         labels = targets['labels'].tolist()
         areas = targets['area'].tolist()
-        iscrowd = targets['iscrowd'].tolist()
+        iscrowd = targets.get('iscrowd',None)
+        if iscrowd is not None: 
+            iscrowd= iscrowd.tolist()
         if 'masks' in targets:
             masks = targets['masks']
             # make masks Fortran contiguous for coco_mask
@@ -182,7 +184,8 @@ def convert_to_coco_api(ds):
             ann['category_id'] = labels[i]
             categories.add(labels[i])
             ann['area'] = areas[i]
-            ann['iscrowd'] = iscrowd[i]
+            ann['iscrowd'] = None if iscrowd is None else iscrowd[i]
+            
             ann['id'] = ann_id
             if 'masks' in targets:
                 ann["segmentation"] = coco_mask.encode(masks[i].numpy())

@@ -10,7 +10,9 @@ import torchvision.models.detection.mask_rcnn
 
 from .coco_utils import get_coco_api_from_dataset
 from .coco_eval import CocoEvaluator
-from .utils import warmup_lr_scheduler, reduce_dict, MetricLogger, SmoothedValue
+from .utils import reduce_dict, MetricLogger, SmoothedValue
+from ..utils import warmup_lr_scheduler
+
 
 
 def train_sam_one_epoch(model, optimizer,loss, data_loader, device, epoch, print_freq):
@@ -79,7 +81,11 @@ def train_sam_one_epoch(model, optimizer,loss, data_loader, device, epoch, print
     return metric_logger
 
 
-def train_maskrcnn_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
+def train_maskrcnn_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, reporter = None,
+                             only_these_lossess = ['loss_box_reg', 'loss_mask', 'loss_objectness', 'loss_rpn_box_reg'],
+                             grad_scaler = None):
+
+    
     model.train()
     metric_logger = MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -95,33 +101,52 @@ def train_maskrcnn_one_epoch(model, optimizer, data_loader, device, epoch, print
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
+        #with torch.cuda.amp.autocast():
         loss_dict = model(images, targets)
-
-        losses = sum(loss for loss in loss_dict.values())
-
+        
+        if only_these_lossess is not None:
+            losses = sum(loss for k, loss in loss_dict.items() if k in only_these_lossess)
+        else:
+            losses = sum(loss for k, loss in loss_dict.items())
+            
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = reduce_dict(loss_dict)
+        
         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
         loss_value = losses_reduced.item()
 
+        optimizer.zero_grad()
+        
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
             print(loss_dict_reduced)
             sys.exit(1)
 
-        optimizer.zero_grad()
-        losses.backward()
-        optimizer.step()
+        if grad_scaler is None:
+            losses.backward()
+            optimizer.step()
+        else:
+            grad_scaler.scale(losses).backward()    
+            grad_scaler.step(optimizer)
+            grad_scaler.update()
+        
+        
 
         if lr_scheduler is not None:
             lr_scheduler.step()
 
         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-
-    return metric_logger
+        
+    if reporter is not None:
+        epoch_losses = {k: metric_logger.meters[k].avg 
+                        for k in list(metric_logger.meters.keys())[1:] if k in reporter._report_keys}
+        epoch_losses['epoch'] = epoch
+        
+        reporter.update_report(epoch_losses)
+        
+    return reporter
 
 
 def _get_iou_types(model):
@@ -137,7 +162,7 @@ def _get_iou_types(model):
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, device):
+def evaluate(model, data_loader, device, reporter = None):
     n_threads = torch.get_num_threads()
     # FIXME remove this and make paste_masks_in_image run on the GPU
     torch.set_num_threads(1)
@@ -156,7 +181,7 @@ def evaluate(model, data_loader, device):
         torch.cuda.synchronize()
         model_time = time.time()
         outputs = model(images)
-
+            
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
         model_time = time.time() - model_time
 
@@ -175,4 +200,5 @@ def evaluate(model, data_loader, device):
     coco_evaluator.accumulate()
     coco_evaluator.summarize()
     torch.set_num_threads(n_threads)
-    return coco_evaluator
+    return coco_evaluator, metric_logger
+

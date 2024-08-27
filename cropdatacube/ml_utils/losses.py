@@ -75,9 +75,9 @@ def loss_boxes(target, predictions, indices, num_boxes):
 
     loss_giou = 1 - torch.diag(generalized_box_iou(
                 box_cxcywh_to_xyxy(src_boxes),
-                box_cxcywh_to_xyxy(target_boxes)))
-    losses['loss_giou'] = loss_giou.sum() / num_boxes
-    
+                box_cxcywh_to_xyxy(target_boxes))).mean() ## mean added
+    #losses['loss_giou'] = loss_giou.sum() / num_boxes
+    losses['loss_giou'] = loss_giou
     return losses
 
     

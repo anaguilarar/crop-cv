@@ -74,8 +74,13 @@ def update_cocotrainingdataset(cocodatasetpath, newdata_images, newdata_anns):
         else:
             newannslist = copy.deepcopy(newdata_anns)
 
-        
-        lastid = oldimageslist[len(oldimageslist)-1]['id']+1
+        val_imgcounter = oldimageslist[len(oldimageslist)-1]['id']
+        if not isinstance(val_imgcounter, str):
+            lastid = oldimageslist[len(oldimageslist)-1]['id']+1
+        else:
+            lastid = None
+            
+        #lastid = oldimageslist[len(oldimageslist)-1]['id']+1
         lastidanns = oldannslist[len(oldannslist)-1]['id']+1
         #print(oldannslist[0]['image_id'])
         for i, newimage in enumerate(newimageslist):
@@ -234,11 +239,16 @@ class CoCoImageryReader(ImageReader):
         return boxes
     
     @property
+    def _labels(self):
+        
+        return [ann['category_id'] for ann in self.anns]
+    
+    @property
     def _mask_imgid(self):
         ### it must be a cocodataset
         assert self.cocodataset
             
-        masks = np.array([np.array(self._annotation_cocodata.annToMask(ann) * ann["category_id"]
+        masks = np.array([np.array(self._annotation_cocodata.annToMask(ann)
                         ) for ann in self.anns])
         
         if len(masks.shape) == 1:
@@ -285,7 +295,7 @@ class CoCoImageryReader(ImageReader):
         
         self.annotation_ids = self._annotation_cocodata.getAnnIds(
                     imgIds=img_data[0]['id'], 
-                    catIds=1, 
+                    #catIds=1, 
                     iscrowd=None
                 )
         
@@ -296,7 +306,7 @@ class CoCoImageryReader(ImageReader):
         return img
     
     
-    def __init__(self, input_path, annotation_path, 
+    def __init__(self, input_path=None, annotation_path=None, 
                     imgsize = None,
                     cocodataset = True) -> None:
         

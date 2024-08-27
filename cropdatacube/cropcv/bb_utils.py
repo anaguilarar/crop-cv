@@ -18,23 +18,19 @@ def xyxy_to_xywh(bbs):
     y[3] = abs(bbs[3] - bbs[1])  # height
     return y
 
-def from_yolo_toxy(yolo_style, size):
-    dh, dw = size
-    _, x, y, w, h = yolo_style
+def xywh_to_xyxy(yolo_style, size):
+    x, y, w, h = yolo_style
 
-    l = int((x - w / 2) * dw)
-    r = int((x + w / 2) * dw)
-    t = int((y - h / 2) * dh)
-    b = int((y + h / 2) * dh)
+    l = int((x - w / 2))
+    r = int((x + w / 2))
+    t = int((y - h / 2))
+    b = int((y + h / 2))
 
     if l < 0:
         l = 0
-    if r > dw - 1:
-        r = dw - 1
+
     if t < 0:
         t = 0
-    if b > dh - 1:
-        b = dh - 1
 
     return (l, r, t, b)
 

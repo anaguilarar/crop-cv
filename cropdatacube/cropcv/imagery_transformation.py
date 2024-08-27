@@ -470,8 +470,7 @@ class ImageAugmentation(object):
             max_displacement = (self._random_parameters['shift'])/100
         if img is None:
             img = copy.deepcopy(self.img_data)
-
-
+        
         imgtr, displacement =  randomly_displace(img, 
                                                  maxshift = max_displacement, 
                                                  xshift = xshift, yshift = yshift)
@@ -955,18 +954,21 @@ class MultiChannelImage(ImageAugmentation):
         return imgtr
     
     
+
 class TranformPairedImages(MultiChannelImage):
 
         
-    def __init__(self, multitr_transform = ['zoom','flip','rotation']) -> None:
+    def __init__(self, augmentations = None, multitr_transform = ['flip','rotation']) -> None:
         
         #self.img1 = img1.copy()
         #self.img2 = img2.copy()
         self._list_not_transform = ['illumination','clahe','hsv']
         
         self._multitr_options = multitr_transform
+        self._aug = augmentations if augmentations else ['rotation', 'zoom', 'illumination', 
+                                                         'flip', 'clahe', 'hsv', 'raw']
     
-    def __call__(self, img1, img2, **kwargs):
+    def __call__(self, img1, img2, verbose = False, **kwargs):
         """_summary_
 
         Args:
@@ -980,7 +982,9 @@ class TranformPairedImages(MultiChannelImage):
         self.img2 = img2.copy()
         super().__init__(self.img1.copy(), **kwargs)
         self._multitr_chain = self._multitr_options
-        img1tr, img2tr = self.random_paired_transform()
+        
+        augfun = random.choice(self._aug)
+        img1tr, img2tr = self.random_paired_transform(augfun, verbose = verbose)
         
         return img1tr, img2tr
         
@@ -1029,7 +1033,13 @@ class TranformPairedImages(MultiChannelImage):
                 trmask[i] = imgtr
 
             else:
-                trmask[i]  =  perform(self._run_default_transforms[tr_name],
+                if isinstance(self.tr_paramaters[tr_name], list):
+                    trmask[i]  =  perform(self._run_default_transforms[tr_name],
+                        mask.copy(),
+                        *self.tr_paramaters[tr_name]+ [False])
+
+                else:
+                    trmask[i]  =  perform(self._run_default_transforms[tr_name],
                         mask.copy(),
                         self.tr_paramaters[tr_name], False)
 

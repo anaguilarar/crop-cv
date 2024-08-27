@@ -122,7 +122,7 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
             raise Exception('Run detection first')
     
         
-    def calculate_color_space_values(self, color_spacelist: list, include_srgb = True) -> dict:
+    def calculate_color_space_values(self, color_spacelist: list, include_srgb = True, seedid:int = None, **kwargs) -> dict:
         """
         Calculate color space values for a seed.
 
@@ -137,7 +137,9 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
         dict
             Dictionary with color space values.
         """
-
+        if seedid is not None:
+            self.single_seed_phenotyping(seedid= seedid, **kwargs)
+            
         srgb = to_standard_rgb(self._seedrgb)
         csimage = {}
         for colospacename in color_spacelist:
@@ -368,7 +370,7 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
         dfc = pd.concat(allseeds, axis = 0).reset_index().drop(['level_0','index'], axis = 1)
         return dfc
     
-    def plot_all_seeds_metrics(self, ncols: int = 4, perpendicular_tolerance: float = 0.001, padding_percentage: float = 1, export_path: str = None, figsize: tuple = (15, 15)) -> plt.Figure:
+    def plot_all_seeds_metrics(self, ncols: int = 4, perpendicular_tolerance: float = 0.001, padding_percentage: float = 1, export_path: str = None, figsize: tuple = (15, 15), font_size: int = 10) -> plt.Figure:
         """
         Plot metrics for all detected seeds.
 
@@ -384,7 +386,8 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
             Path to export the plot image (default is None).
         figsize : tuple of int, optional
             Size of the figure (default is (15, 15)).
-
+        font_size: int, optional
+            Font size for seeds title
         Returns
         -------
         plt.Figure
@@ -403,7 +406,7 @@ class SeedsCounter(ShapeMetricsFromMaskedLayer, MASKRCNN_Detector):
 
             ax = fig.add_subplot(ncols,nrows, i+1)
             ax.set_axis_off()
-            ax.set_title(f'{self._seedid}')
+            ax.set_title(f'{self._seedid}', fontdict={'fontsize': font_size})
             
             self.plot_individual_seed(ax=ax)
             
